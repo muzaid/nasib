@@ -36,11 +36,27 @@ import path from 'node:path';
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const TYPES = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.ttf':'font/ttf' };
 
+// The same headers Vercel will send, read from vercel.json rather than
+// copied. Serving the site here without them is how a Content-Security-
+// Policy mistake reaches production green: `img-src` was missing the
+// Supabase host, so every photo was blocked in the browser while fetch()
+// — governed by connect-src, which did allow it — kept working, and
+// every test passed.
+const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, '..', '..', 'vercel.json'), 'utf8'));
+const PROD_HEADERS = Object.fromEntries(
+  (vercel.headers.find((h) => h.source === '/(.*)')?.headers || [])
+    .filter((h) => h.key !== 'Strict-Transport-Security')   // would force https on localhost
+    .map((h) => [h.key, h.value]),
+);
+
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   const file = path.join(ROOT, url === '/' ? 'index.html' : url);
   if (!file.startsWith(ROOT) || !fs.existsSync(file)) { res.writeHead(404); return res.end('no'); }
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
+  res.writeHead(200, {
+    ...PROD_HEADERS,
+    'content-type': TYPES[path.extname(file)] || 'application/octet-stream',
+  });
   res.end(fs.readFileSync(file));
 });
 await new Promise((r) => server.listen(0, r));
@@ -744,6 +760,377 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
         'and the application the person filled in is what gets sent');
   check(submitted?.city === 'غزة', 'with every field they typed, not a blank form');
   check(page.url().includes('camera'), 'then it carries on to the camera step');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 9. the rest of the desk, and the member screens ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  let photos = [
+    { id: 'ph-1', storage_path: 'u-x/1.jpg', is_primary: true, user_id: 'u-x',
+      display_name: 'ليلى', city: 'رام الله', age: 29, status: 'admitted' },
+    { id: 'ph-2', storage_path: 'u-y/2.jpg', is_primary: false, user_id: 'u-y',
+      display_name: 'عمر', city: 'نابلس', age: 33, status: 'admitted' },
+  ];
+  let reports = [{ id: 'r-1', reason: 'asked_for_money', detail: 'طلب مالاً للسفر',
+                   status: 'open', created_at: new Date().toISOString(),
+                   reported_id: 'u-y', reported_name: 'عمر', reported_status: 'admitted',
+                   reporter_id: 'u-x', reporter_name: 'ليلى',
+                   reports_against_total: 2, reports_by_reporter: 1 }];
+  let requests = [{ id: 'q-1', note: 'أودّ التعرّف', created_at: new Date().toISOString(),
+                    requester_id: 'u-y', requester_name: 'عمر', requester_status: 'admitted',
+                    requester_age: 33, owner_id: 'u-x', owner_name: 'ليلى',
+                    requests_by_requester: 1 }];
+  const acted = [];
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-boss', email: 'boss@nasib.app' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-boss', email: 'boss@nasib.app', is_admin: true,
+                    has_credential: true, is_anonymous: false, has_row: false });
+    }
+    if (url.includes('/rpc/my_application')) return json(null);
+    if (url.includes('/rpc/admin_stats')) {
+      return json({ waiting: 3, admitted: 2, photos_pending: photos.length,
+                    requests_pending: requests.length,
+                    reports_open: reports.filter((r) => r.status === 'open').length,
+                    matches_active: 1, applied_7d: 4, decided_7d: 2,
+                    longest_wait_hours: 50, median_decision_hours: 6 });
+    }
+    if (url.includes('/rpc/admin_photo_queue')) {
+      const f = body.filter || 'pending';
+      return json({ filter: f,
+        counts: { pending: photos.filter((p) => !p.approved).length,
+                  approved: photos.filter((p) => p.approved).length },
+        rows: photos.filter((p) => f === 'all' ? true
+                                 : f === 'approved' ? p.approved : !p.approved) });
+    }
+    if (url.includes('/rpc/admin_photo_action')) {
+      acted.push({ what: 'photo', id: body.photo_id, action: body.action });
+      const one = photos.find((p) => p.id === body.photo_id);
+      if (body.action === 'delete') photos = photos.filter((p) => p.id !== body.photo_id);
+      else one.approved = body.action === 'approve';
+      return json({ id: body.photo_id, action: body.action, storage_path: one.storage_path });
+    }
+    if (url.includes('/rpc/admin_search')) {
+      const q = (body.q || '').trim();
+      return json(q.length < 2 ? []
+        : [{ id: 'u-y', display_name: 'عمر', city: 'نابلس', age: 33,
+             status: 'admitted', photo_count: 1 }]);
+    }
+    if (url.includes('/rpc/admin_meetings')) {
+      return json({ filter: 'pending', counts: { pending: 1, scheduled: 0 },
+        rows: [{ id: 'mt-1', state: 'pending_scheduling', party_a: 'ليلى', party_b: 'عمر',
+                 city: 'رام الله', proposed_at: new Date().toISOString(),
+                 proposer_brings_family: true, invitee_brings_family: true }] });
+    }
+    if (url.includes('/rpc/open_slots')) {
+      return json([{ slot_id: 's-1', starts_at: new Date(Date.now() + 864e5).toISOString(),
+                     room: 'غرفة 1', staff_name: 'أم محمد' }]);
+    }
+    if (url.includes('/rpc/schedule_meeting')) {
+      acted.push({ what: 'schedule', meeting: body.p_meeting_id, slot: body.p_slot_id });
+      return json(null);
+    }
+    if (url.includes('/rpc/admin_audit')) {
+      return json([
+        { at: new Date().toISOString(), kind: 'decision', who: 'Owner',
+          what: 'admit', detail: 'looks_genuine', subject: 'ليلى' },
+        { at: new Date().toISOString(), kind: 'access', who: 'Owner',
+          what: 'member', detail: null, subject: 'عمر' }]);
+    }
+    if (url.includes('/rpc/admin_reviewers')) {
+      return json([{ email: 'owner@nasib.app', full_name: 'Owner', role: 'admin',
+                     active: true, is_me: true, decisions: 12,
+                     last_decision: new Date().toISOString() }]);
+    }
+    if (url.includes('/rpc/admin_reports')) {
+      return json({ filter: 'open', counts: { open: reports.length },
+                    rows: reports.filter((r) => r.status === 'open') });
+    }
+    if (url.includes('/rpc/admin_resolve_report')) {
+      acted.push({ what: 'report', id: body.report_id, action: body.action });
+      reports = reports.map((r) => r.id === body.report_id ? { ...r, status: body.action } : r);
+      return json({ id: body.report_id, status: body.action });
+    }
+    if (url.includes('/rpc/admin_photo_requests')) return json(requests);
+    if (url.includes('/rpc/admin_screen_photo_request')) {
+      acted.push({ what: 'screen', id: body.request_id, allow: body.allow });
+      requests = requests.filter((r) => r.id !== body.request_id);
+      return json(null);
+    }
+    if (url.includes('/rpc/admin_member')) {
+      return json({ user_id: body.target, display_name: 'عمر', age: 33, city: 'نابلس',
+                    status: 'admitted', marital_status: 'never_married',
+                    practice_level: 'practicing', timeline: 'within_1_year',
+                    bio: 'مهندس مدني.', occupation: 'مهندس', children_count: 0,
+                    willing_to_relocate: true, family_aware: true, wali_required: false,
+                    reports_against: 2, matches: 1,
+                    photos: [{ id: 'ph-2', storage_path: 'u-y/2.jpg', ordinal: 0,
+                               is_primary: true, approved: false }],
+                    decisions: [{ action: 'admit', reason_code: 'looks_genuine',
+                                  created_at: new Date().toISOString(), by: 'Owner' }] });
+    }
+    if (url.includes('/rpc/admin_queue')) {
+      return json({ filter: 'waiting', counts: { applying: 3 }, rows: [] });
+    }
+    if (url.includes('/storage/v1/object/sign/')) return json({ signedURL: '/object/x?token=a' });
+    if (url.includes('/rpc/browse_members')) return json({ gated: true, status: 'none', rows: [] });
+    return json({}, 404);
+  });
+
+  // ── stats ──
+  await page.goto(`${base}/#/admin-stats`);
+  await page.waitForTimeout(900);
+  const stats = await page.locator('#app').innerText();
+  check(errors.length === 0, `no page errors across the desk ${errors.join('; ')}`);
+  check(stats.includes('50 ساعة'), 'the longest wait is shown, not an average');
+  check(stats.includes('في الانتظار'), 'with the queue sizes');
+
+  // ── photo approval ──
+  await page.goto(`${base}/#/admin-photos`);
+  await page.waitForTimeout(900);
+  check((await page.locator('#app').innerText()).includes('ليلى'),
+        'the photo queue lists who each photo belongs to');
+  check(await page.locator('.photo-cell img.unveiled').count() >= 1,
+        'and shows the photo unveiled — a reviewer cannot judge a blur');
+
+  await page.locator('[data-photo-action="approve"]').first().click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'photo' && a.action === 'approve'),
+        'approving sends the decision');
+
+  // The reported bug: once everything is approved, the screen was empty
+  // and looked broken, with no way to see or undo what had been done.
+  await page.locator('[data-photo-action="approve"]').first().click();
+  await page.waitForTimeout(700);
+  check((await page.locator('#app').innerText()).includes('أُنجز كل شيء'),
+        'an empty pending queue says the work is done, not nothing');
+
+  await page.locator('[data-photo-filter="approved"]').click();
+  await page.waitForTimeout(700);
+  const approvedList = await page.locator('#app').innerText();
+  check(approvedList.includes('ليلى') && approvedList.includes('عمر'),
+        'the approved filter shows what was approved');
+  check(approvedList.includes('سحب الاعتماد'),
+        'and offers to take an approval back');
+
+  await page.locator('[data-photo-action="unapprove"]').first().click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.action === 'unapprove'), 'un-approving sends that action');
+  check(photos.length === 2, 'and does not delete the photo');
+
+  // Deleting asks twice.
+  await page.locator('[data-photo-filter="all"]').click();
+  await page.waitForTimeout(600);
+  const del = page.locator('[data-photo-action="delete"]').first();
+  await del.click();
+  await page.waitForTimeout(250);
+  check(!acted.some((a) => a.action === 'delete'), 'one tap on delete does not delete');
+  check((await del.innerText()).includes('تأكيد'), 'it asks for confirmation first');
+  await del.click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.action === 'delete'), 'and the second tap deletes');
+
+  // ── reports ──
+  await page.goto(`${base}/#/admin-reports`);
+  await page.waitForTimeout(900);
+  const rep = await page.locator('#app').innerText();
+  check(rep.includes('طلب مالاً'), 'a report is shown by its reason, in Arabic');
+  check(rep.includes('2 بلاغات عليه'), 'with how many reports that person has against them');
+
+  await page.locator('[data-report="actioned"]').click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'report' && a.action === 'actioned'), 'resolving a report is sent');
+
+  // ── photo access screening ──
+  await page.goto(`${base}/#/admin-requests`);
+  await page.waitForTimeout(900);
+  check((await page.locator('#app').innerText()).includes('أودّ التعرّف'),
+        "the requester's note is shown to the screener");
+  await page.locator('[data-screen-request="no"]').click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'screen' && a.allow === false),
+        'blocking a request is sent, and she is never troubled with it');
+
+  // ── member record ──
+  await page.goto(`${base}/#/admin-reports`);
+  await page.waitForTimeout(800);
+  await page.goto(`${base}/#/admin-photos`);
+  await page.waitForTimeout(600);
+  await page.goto(`${base}/#/admin`);
+  await page.waitForTimeout(800);
+  // The desk reaches a member record through a row's "open" button. The
+  // stubbed application queue is empty here, so the same delegated
+  // handler is exercised through an injected trigger — pinned above the
+  // fixed tab bar, which otherwise swallows the click.
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML('beforeend',
+      '<button id="probe" data-member="u-y" style="position:fixed;top:0;inset-inline-start:0;z-index:9999">open</button>');
+  });
+  await page.locator('#probe').click();
+  await page.waitForTimeout(900);
+  const member = await page.locator('#app').innerText();
+  check(member.includes('عمر'), "a member's record opens");
+  check(member.includes('مهندس'), 'with what they submitted');
+  check(member.includes('سجلّ القرارات'), 'and the decisions made about them');
+  check(member.includes('2 بلاغ'), 'and the reports against them');
+  check(!member.includes('phone'), 'and no phone number');
+
+  // ---------- 11. search, meetings and the audit trail ----------
+  // Same page and stubs as above: these screens are part of the same
+  // desk and the same session.
+  await page.goto(`${base}/#/admin-search`);
+  await page.waitForTimeout(700);
+  await page.locator('#search-q').fill('عم');
+  await page.waitForTimeout(800);
+  const found = await page.locator('#app').innerText();
+  check(found.includes('عمر'), 'typing two letters searches members');
+  check(await page.evaluate(() => document.activeElement?.id) === 'search-q',
+        'and the field keeps focus while results arrive');
+
+  await page.goto(`${base}/#/admin-meetings`);
+  await page.waitForTimeout(900);
+  const meet = await page.locator('#app').innerText();
+  check(meet.includes('ليلى') && meet.includes('عمر'), 'meetings list both parties');
+  check(meet.includes('الطرفان يحضران مع أهلهما'),
+        'and flag when families attend, which changes the room');
+  await page.locator('[data-schedule]').first().click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'schedule' && a.slot === 's-1'),
+        'picking a slot schedules the meeting');
+
+  await page.goto(`${base}/#/admin-audit`);
+  await page.waitForTimeout(900);
+  const audit = await page.locator('#app').innerText();
+  check(audit.includes('owner@nasib.app'), 'the audit screen lists the reviewers');
+  check(audit.includes('فتح ملف عمر'),
+        'and shows profiles opened, not only decisions made');
+  check(audit.includes('محرّر SQL'),
+        'saying plainly that access is granted only from the SQL editor');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+
+// ---------- 10. an approved photo actually appears, and says so ----------
+//
+// Reported from the live site: photos "not loading" and still marked
+// under review after a reviewer approved them. The server was right on
+// both counts — the photo was approved and the signed URL served 342KB
+// of JPEG — so the failure was here.
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  // A real 1x1 PNG, so naturalWidth is a genuine decode rather than a
+  // src attribute that happens to be set.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const blocked = [];
+  page.on('console', (m) => {
+    if (/Content Security Policy|Refused to load/i.test(m.text())) blocked.push(m.text());
+  });
+
+  let approved = false;
+  let signCalls = 0;
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-m', email: 'm@example.com' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-m', email: 'm@example.com', is_admin: false,
+                    has_credential: true, is_anonymous: false, has_row: true });
+    }
+    if (url.includes('/rpc/my_application')) return json({ status: 'admitted' });
+    if (url.includes('/rpc/my_profile')) {
+      return json({ user_id: 'u-m', status: 'admitted', display_name: 'حموده',
+                    city: 'رام الله', marital_status: 'never_married',
+                    practice_level: 'practicing', timeline: 'within_1_year',
+                    photos: [{ id: 'ph-1', storage_path: 'u-m/a.jpg', ordinal: 0,
+                               is_primary: true, approved }] });
+    }
+    if (url.includes('/storage/v1/object/sign/')) {
+      signCalls += 1;
+      return json({ signedURL: '/object/sign/photos/u-m/a.jpg?token=abc' });
+    }
+    if (url.includes('/rpc/browse_members')) return json({ gated: false, status: 'admitted', rows: [] });
+    return json({}, 404);
+  });
+  // The signed URL is fetched by the <img>, from the Supabase host — so
+  // this request is governed by img-src, not connect-src. That is the
+  // whole point of this case.
+  // GET only: the POST that *creates* the signed URL hits the same path
+  // prefix, and Playwright matches the most recently registered route
+  // first — so without this guard the sign call was answered with a PNG.
+  await page.route('**/object/sign/photos/**', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+  });
+
+  await page.goto(`${base}/#/profile`);
+  await page.waitForTimeout(1200);
+
+  check(errors.length === 0, `no page errors on the profile ${errors.join('; ')}`);
+  check(signCalls >= 1, 'a signed URL is requested for the photo');
+
+  const loaded = await page.evaluate(() => {
+    const img = document.querySelector('.photo-cell img[data-signed]');
+    return img ? { src: !!img.getAttribute('src'), width: img.naturalWidth } : null;
+  });
+  check(loaded?.src === true, 'the image element gets its src');
+  check(loaded?.width > 0, 'and the image actually decodes — not a broken icon');
+  check(blocked.length === 0,
+        `no Content-Security-Policy refusals ${blocked.join('; ').slice(0, 160)}`);
+
+  check((await page.locator('#app').innerText()).includes('قيد المراجعة'),
+        'an unapproved photo says so');
+
+  // Now a reviewer approves it elsewhere. Coming back to the tab is when
+  // the member expects to see that.
+  approved = true;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(1000);
+
+  const after = await page.locator('#app').innerText();
+  check(!after.includes('قيد المراجعة'),
+        'and once approved elsewhere, the member stops being told it is under review');
+  check(after.includes('الأساسية'), 'while the rest of the photo card survives the refresh');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));

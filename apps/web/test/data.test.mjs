@@ -216,3 +216,54 @@ test("the application is sent under one key, so the function signature matches",
     application: { display_name: "سارة", gender: "female" },
   });
 });
+
+test("linking an email says so when the project holds it pending confirmation", async () => {
+  // GoTrue answers 200 and changes nothing when "Confirm email" is on:
+  // the address is pending until a link is clicked. Reporting success
+  // there leaves the person to be refused by the next thing they do.
+  const doFetch = stubFetch([
+    () => ({ body: sessionBody() }),                       // signup (anonymous)
+    () => ({ body: { id: "user-1", new_email: "a@b.com" } }), // PUT /user
+    () => ({ body: sessionBody() }),                       // refresh
+    () => ({ body: { user_id: "user-1", has_credential: false } }), // whoami
+  ]);
+  const client = createClient({ url: URL_, key: KEY, fetch: doFetch, storage: memoryStorage() });
+
+  await assert.rejects(
+    () => client.linkEmailPassword("a@b.com", "a-good-password"),
+    (err) => {
+      assert.equal(err.code, "email_confirmation_pending");
+      assert.match(err.message, /Confirm email/);
+      return true;
+    },
+  );
+});
+
+test("linking succeeds quietly when the account really did gain a credential", async () => {
+  const doFetch = stubFetch([
+    () => ({ body: sessionBody() }),
+    () => ({ body: { id: "user-1", email: "a@b.com" } }),
+    () => ({ body: sessionBody() }),
+    () => ({ body: { user_id: "user-1", has_credential: true, email: "a@b.com" } }),
+  ]);
+  const client = createClient({ url: URL_, key: KEY, fetch: doFetch, storage: memoryStorage() });
+
+  const result = await client.linkEmailPassword("a@b.com", "a-good-password");
+  assert.equal(result.email, "a@b.com");
+});
+
+test("the email rate limit is not described as a one-minute wait", async () => {
+  // It resets hourly and the real fix is a project setting, so "try again
+  // in a minute" is advice that leaves someone pressing a button.
+  const doFetch = stubFetch([
+    () => ({ status: 429, body: { error_code: "over_email_send_rate_limit",
+                                  msg: "email rate limit exceeded" } }),
+  ]);
+  const client = createClient({ url: URL_, key: KEY, fetch: doFetch, storage: memoryStorage() });
+
+  await assert.rejects(() => client.signUpWithPassword("a@b.com", "a-good-password"), (err) => {
+    assert.match(err.message, /Confirm email/);
+    assert.doesNotMatch(err.message, /دقيقة/);
+    return true;
+  });
+});

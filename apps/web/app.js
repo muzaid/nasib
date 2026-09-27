@@ -97,6 +97,25 @@ const state = {
   members: null,
   queue: null,
   queueFilter: 'waiting',
+  photoQueue: null,
+  photoFilter: 'pending',
+  searchQ: '',
+  searchResults: null,
+  adminMeetings: null,
+  slots: [],
+  audit: null,
+  reviewers: null,
+  myRequests: null,
+  myGrants: null,
+  matches: null,
+  thread: null,
+  openMatch: '',
+  meetings: null,
+  photoRequests: null,
+  reports: null,
+  stats: null,
+  member: null,
+  memberId: '',
   gate: '',
   missingRoute: '',
   loginMode: 'signin',
@@ -608,33 +627,43 @@ screens.today = () => {
     </div>`;
 };
 
-screens.photos = () => `
+screens.photos = () => {
+  const live = !!state.db;
+  const requests = live ? (state.myRequests || []) : state.requests;
+  const grants = live ? (state.myGrants || []) : state.grants;
+  const loading = live && (state.myRequests === null || state.myGrants === null);
+
+  return `
   <div class="screen">
     ${appbar('صوري', { back: false })}
     <div class="pad">
+      ${loading ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>` : `
       <p class="eyebrow">طلبات رؤية صورك</p>
-      ${state.requests.length === 0
+      ${requests.length === 0
         ? `<div class="panel"><p class="muted" style="margin:0">لا توجد طلبات الآن.</p></div>`
-        : state.requests.map((r) => `
+        : requests.map((r) => `
           <div class="panel">
             <div style="display:flex;align-items:flex-start;gap:12px">
               <div style="flex:1;min-width:0">
-                <div style="font-size:16.5px;font-weight:600">${r.name}، ${r.age}</div>
-                <div class="tiny muted" style="margin-top:2px">${r.city} · يطلب رؤية صورك</div>
+                <div style="font-size:16.5px;font-weight:600">${
+                  escapeAttr(r.display_name || r.name || '—')}${r.age ? `، ${r.age}` : ''}</div>
+                <div class="tiny muted" style="margin-top:2px">${
+                  escapeAttr(r.city || '—')} · يطلب رؤية صورك</div>
               </div>
-              ${r.verified ? `<span class="badge id">${star(12, 'var(--accent)')} هوية موثّقة</span>` : ''}
+              ${r.verified ? `<span class="badge id">${star(12, 'var(--accent)')} عضو مقبول</span>` : ''}
             </div>
-            <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
-              <p style="margin:0;font-size:14.5px;line-height:1.85">${r.note}</p>
-            </div>
+            ${r.note ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p style="margin:0;font-size:14.5px;line-height:1.85">${escapeAttr(r.note)}</p>
+              </div>` : ''}
             <hr class="rule">
             <div style="display:flex;gap:10px;align-items:flex-start">
               ${ico.shield}
               <p class="tiny muted" style="margin:0;line-height:1.75">راجعت الإدارة هذا الطلب قبل أن يصلك.</p>
             </div>
             <div class="btn-row" style="margin-top:14px">
-              <button class="btn ghost" data-decide-photo="no" data-id="${r.id}">لا أسمح</button>
-              <button class="btn wide" data-decide-photo="yes" data-id="${r.id}">أسمح برؤية صوري</button>
+              <button class="btn ghost" data-decide-photo="no" data-id="${escapeAttr(r.id)}">لا أسمح</button>
+              <button class="btn wide" data-decide-photo="yes" data-id="${escapeAttr(r.id)}">أسمح برؤية صوري</button>
             </div>
             <p class="note">قرارك لا يُبلَّغ له بأي تفصيل. لا داعي لتبرير الرفض.</p>
           </div>`).join('')}
@@ -642,57 +671,106 @@ screens.photos = () => `
       <div class="spacer"></div>
       <p class="eyebrow">من يرى صوري</p>
       <div class="panel tight">
-        ${state.grants.map((g) => `
-          <div class="line-item" style="align-items:center">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:15.5px;font-weight:600">${g.name}</div>
-              <div class="tiny muted">
-                ${g.views ? `شاهدها ${g.views} مرات` : 'لم يشاهدها بعد'} · يتبقى ${g.days} يوماً
+        ${grants.length === 0
+          ? '<p class="muted tiny" style="margin:0">لا أحد يرى صورك الآن.</p>'
+          : grants.map((g) => `
+            <div class="line-item" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15.5px;font-weight:600">${
+                  escapeAttr(g.display_name || g.name || '—')}</div>
+                <div class="tiny muted">
+                  ${(g.view_count ?? g.views)
+                    ? `شاهدها ${g.view_count ?? g.views} مرة` : 'لم يشاهدها بعد'}
+                  · يتبقى ${g.days_left ?? g.days} يوماً
+                </div>
               </div>
-            </div>
-            <button class="btn quiet" style="width:auto;color:var(--danger)" data-revoke="${g.id}">سحب الإذن</button>
-          </div>`).join('')}
+              <button class="btn quiet" style="width:auto;color:var(--danger)"
+                      data-revoke="${escapeAttr(g.id)}">سحب الإذن</button>
+            </div>`).join('')}
       </div>
 
-      ${state.grants.some((g) => g.shots > 0) ? `
+      ${grants.some((g) => (g.screenshots ?? g.shots) > 0) ? `
         <div class="panel" style="margin-top:12px;border-inline-start:3px solid var(--danger)">
           <div style="display:flex;gap:10px;align-items:flex-start">
             ${ico.warn}
             <div>
-              <div style="font-weight:600;font-size:15.5px;color:var(--danger)">التقط أحدهم لقطة لصورك</div>
-              <div class="tiny muted" style="margin-top:2px">خالد، 30 · أمس 9:14 مساءً · المحاولة الأولى</div>
+              <div style="font-weight:600;font-size:15.5px;color:var(--danger)">
+                رُصدت محاولة لقطة شاشة لصورك
+              </div>
               <p style="margin:8px 0 0;font-size:14px;line-height:1.8">
-                أُبلغ بأننا رصدنا المحاولة وبأن صورك تحمل علامة تعريف باسمه.
+                أُبلغ صاحب المحاولة بأننا رصدناها وبأن صورك تحمل علامة تعريف باسمه.
                 عند المحاولة الثانية يُسحب إذنه تلقائياً دون انتظار قرارك.
               </p>
             </div>
           </div>
-        </div>` : ''}
+        </div>` : ''}`}
 
-      <div class="panel accent-alt" style="margin-top:12px">
-        <p class="eyebrow">ما الذي نمنعه فعلاً</p>
+      <div class="spacer"></div>
+      <div class="panel tinted">
+        <p class="eyebrow">في المتصفح</p>
         <p style="margin:0;font-size:14px;line-height:1.85">
-          على أندرويد: التقاط الشاشة وتسجيلها محجوبان تماماً على شاشات الصور والمحادثة.
-        </p>
-        <hr class="rule">
-        <p style="margin:0;font-size:14px;line-height:1.85">
-          على الآيفون: لا يستطيع أي تطبيق منع لقطة الشاشة — هذه حقيقة النظام، لا خيارنا.
-          لكننا نرصدها ونُعلمك باسم من التقطها.
-        </p>
-        <hr class="rule">
-        <p style="margin:0;font-size:14px;line-height:1.85">
-          وفي المتصفّح: لا يمكن منع شيء من هذا. لهذا يبقى الكشف عن الصور داخل التطبيق.
+          منع لقطات الشاشة خاصية نظام تشغيل، ولا يملكها المتصفح. في تطبيق
+          الهاتف تُمنع اللقطة نفسها؛ هنا نرصد ما نستطيع رصده فقط.
         </p>
       </div>
     </div>
   </div>`;
+};
 
-screens.chat = () => `
+// The chat screen is a list of conversations until one is open, because
+// a member with two matches and no way to choose between them is a
+// screen that only ever worked with one fixture in it.
+screens.chat = () => {
+  const live = !!state.db;
+
+  if (live && state.matches === null) {
+    return `<div class="screen">${appbar('المحادثة', { back: false })}
+      <div class="pad"><div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div></div></div>`;
+  }
+
+  if (live && !state.openMatch) {
+    const matches = state.matches || [];
+    return `
+    <div class="screen">
+      ${appbar('المحادثة', { back: false })}
+      <div class="pad">
+        ${matches.length === 0 ? `
+          <div class="panel">
+            <p style="margin:0;font-size:15px;line-height:1.9">
+              لا محادثات بعد. تبدأ المحادثة حين يُبدي الطرفان اهتماماً متبادلاً —
+              ولا يعلم أحدكما باهتمام الآخر قبل ذلك.
+            </p>
+          </div>`
+        : matches.map((m) => `
+          <button class="panel" style="width:100%;text-align:inherit;border:1px solid var(--line);cursor:pointer"
+                  data-open-match="${escapeAttr(m.id)}">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16.5px;font-weight:600">
+                  ${escapeAttr(m.display_name || '—')}${m.age ? `، ${m.age}` : ''}
+                </div>
+                <div class="tiny muted" style="margin-top:2px">
+                  ${escapeAttr(m.city || '—')}
+                  ${m.contact_unlocked ? ' · فُتح تبادل التواصل' : ' · قبل المكالمة المرئية'}
+                </div>
+              </div>
+              ${m.unread ? `<span class="badge id">${m.unread}</span>` : ''}
+            </div>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  const name = live
+    ? (state.matches || []).find((m) => m.id === state.openMatch)?.display_name || '—'
+    : 'يوسف';
+
+  return `
   <div class="screen">
     <div class="appbar">
       <button class="iconbtn" data-back aria-label="رجوع">${ico.back}</button>
       <div style="text-align:center">
-        <h2 style="margin:0">يوسف</h2>
+        <h2 style="margin:0">${escapeAttr(name)}</h2>
         <div class="tiny muted" style="margin-top:1px">الوليّ يطّلع على المحادثة</div>
       </div>
       <span class="iconbtn" aria-hidden="true">${ico.shield}</span>
@@ -712,41 +790,118 @@ screens.chat = () => `
       <button class="send" id="send" aria-label="إرسال">${ico.send}</button>
     </div>
     <p class="note pad" style="text-align:center">
-      جرّب كتابة رقم هاتف أو عنوان — الرسالة تُفحص قبل الإرسال.
+      الرسالة تُفحص قبل الإرسال، وتُفحص مرة أخرى على الخادم.
     </p>
   </div>`;
+};
 
-screens.meeting = () => `
+screens.meeting = () => {
+  const live = !!state.db;
+
+  if (live && state.meetings === null) {
+    return `<div class="screen">${appbar('لقاء في المكتب', { back: false })}
+      <div class="pad"><div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div></div></div>`;
+  }
+
+  // The live shape, from my_meetings. Falls back to the fixture so the
+  // screen still demonstrates itself with no backend.
+  const m = live
+    ? (state.meetings || []).find((x) =>
+        ['scheduled', 'pending_scheduling', 'proposed'].includes(x.state))
+    : {
+        state: 'scheduled', with_name: 'يوسف', office: DEMO.meeting.office,
+        address: DEMO.meeting.address, room: DEMO.meeting.room,
+        staff_name: DEMO.meeting.staff, when_text: DEMO.meeting.when,
+        proposer_brings_family: true, invitee_brings_family: true,
+      };
+
+  if (!m) {
+    return `
+    <div class="screen">
+      ${appbar('لقاء في المكتب', { back: false })}
+      <div class="pad">
+        <div class="panel">
+          <p style="margin:0;font-size:15px;line-height:1.9">
+            لا لقاء مقترحاً الآن. اللقاء الأول يكون في مكتبنا وبحضور موظّف،
+            ويُقترح من داخل المحادثة بعد المكالمة المرئية.
+          </p>
+        </div>
+        <div class="panel tinted accent" style="margin-top:14px">
+          <p style="margin:0;font-size:14px;line-height:1.85">
+            نحن لا نرتّب لقاءً في مكان عام ولا في بيت أحد. المكتب هو المكان،
+            وهذا ليس تشدّداً — هو ما يجعل الطرف الآخر يوافق على اللقاء أصلاً.
+          </p>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const when = m.when_text
+    || (m.starts_at
+        ? new Date(m.starts_at).toLocaleString('ar', {
+            weekday: 'long', day: 'numeric', month: 'long',
+            hour: 'numeric', minute: '2-digit',
+          })
+        : 'لم يُحدَّد الموعد بعد');
+
+  const families = m.proposer_brings_family && m.invitee_brings_family
+    ? 'الطرفان يحضران مع أهلهما'
+    : m.proposer_brings_family || m.invitee_brings_family
+    ? 'أحد الطرفين يحضر مع أهله'
+    : 'لا أحد يحضر مع أهله';
+
+  const settled = m.state === 'scheduled';
+
+  return `
   <div class="screen">
     ${appbar('لقاء في المكتب', { back: false })}
     <div class="pad">
-      <div class="panel accent-alt">
+      <div class="panel ${settled ? 'accent-alt' : ''}">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          ${star(18, 'var(--accent)')}
-          <span style="font-size:16px;font-weight:600">الموعد مؤكد</span>
+          ${star(18, settled ? 'var(--accent)' : 'var(--muted)')}
+          <span style="font-size:16px;font-weight:600">${
+            settled ? 'الموعد مؤكد' : word('meeting', m.state)}</span>
         </div>
         <hr class="rule">
         <dl style="margin:0">
-          <div class="kv"><dt>الموعد</dt><dd>${DEMO.meeting.when}</dd></div>
-          <div class="kv"><dt>المكتب</dt><dd>${DEMO.meeting.office}</dd></div>
-          <div class="kv"><dt>العنوان</dt><dd style="font-weight:400">${DEMO.meeting.address}</dd></div>
-          <div class="kv"><dt>الغرفة</dt><dd>${DEMO.meeting.room}</dd></div>
-          <div class="kv"><dt>الموظّفة</dt><dd>${DEMO.meeting.staff}</dd></div>
-          <div class="kv"><dt>العائلات</dt><dd>${DEMO.meeting.family}</dd></div>
+          <div class="kv"><dt>مع</dt><dd>${escapeAttr(m.with_name || '—')}</dd></div>
+          <div class="kv"><dt>الموعد</dt><dd>${escapeAttr(when)}</dd></div>
+          ${m.office ? `<div class="kv"><dt>المكتب</dt><dd>${escapeAttr(m.office)}</dd></div>` : ''}
+          ${m.address ? `<div class="kv"><dt>العنوان</dt><dd style="font-weight:400">${
+            escapeAttr(m.address)}</dd></div>` : ''}
+          ${m.room ? `<div class="kv"><dt>الغرفة</dt><dd>${escapeAttr(m.room)}</dd></div>` : ''}
+          ${m.staff_name ? `<div class="kv"><dt>الموظّفة</dt><dd>${
+            escapeAttr(m.staff_name)}</dd></div>` : ''}
+          <div class="kv"><dt>العائلات</dt><dd>${families}</dd></div>
         </dl>
+        ${m.maps_url ? `
+          <a class="btn quiet" style="margin-top:10px;display:block;text-align:center"
+             href="${escapeAttr(m.maps_url)}" target="_blank" rel="noopener">الموقع على الخريطة</a>` : ''}
       </div>
 
-      <div class="panel">
-        <p class="eyebrow">قبل أن تأتي</p>
-        <div class="line-item" style="padding-top:2px">${ico.check}<span>احضر قبل الموعد بعشر دقائق</span></div>
-        <div class="line-item">${ico.check}<span>أحضِر هويتك</span></div>
-        <div class="line-item">${ico.face}<span>إن تأخرت أو اعتذرت، أخبرنا من التطبيق</span></div>
-      </div>
+      ${settled ? `
+        <div class="panel">
+          <p class="eyebrow">قبل أن تأتي</p>
+          <div class="line-item" style="padding-top:2px">${ico.check}<span>احضر قبل الموعد بعشر دقائق</span></div>
+          <div class="line-item">${ico.check}<span>أحضِر هويتك</span></div>
+          <div class="line-item">${ico.face}<span>إن تأخرت أو اعتذرت، أخبرنا من التطبيق</span></div>
+        </div>
+        <p class="note">نسجّل الحضور. عدم الحضور دون إشعار يُسجَّل في ملفك.</p>`
+      : `
+        <div class="panel tinted accent">
+          <p style="margin:0;font-size:14px;line-height:1.85">
+            ${m.i_proposed
+              ? 'اقترحتَ هذا اللقاء، وننتظر ردّ الطرف الآخر.'
+              : 'اقترح الطرف الآخر هذا اللقاء. الردّ لك.'}
+            يحدّد المكتب الموعد النهائي بعد موافقة الطرفين.
+          </p>
+        </div>`}
 
-      <p class="note">نسجّل الحضور. عدم الحضور دون إشعار يُسجَّل في ملفك.</p>
-      <button class="btn quiet" style="color:var(--danger)">إلغاء اللقاء</button>
+      <button class="btn quiet" style="color:var(--danger);margin-top:14px"
+              data-cancel-meeting="${escapeAttr(m.id || '')}">إلغاء اللقاء</button>
     </div>
   </div>`;
+};
 
 // --------------------------------------------------------------------- //
 // My profile
@@ -765,6 +920,17 @@ const WORDS = {
   timeline: {
     within_6_months: 'خلال 6 شهور', within_1_year: 'خلال سنة',
     within_2_years: 'خلال سنتين', when_right_person: 'عند الشخص المناسب',
+  },
+  reason: {
+    fake_profile: 'ملف مزيّف', already_married: 'متزوج بالفعل',
+    asked_for_money: 'طلب مالاً', harassment: 'مضايقة',
+    inappropriate_content: 'محتوى غير لائق', not_serious: 'غير جادّ',
+    underage: 'قاصر', other: 'أخرى',
+  },
+  meeting: {
+    proposed: 'مقترح', pending_scheduling: 'بانتظار موعد',
+    scheduled: 'محدَّد موعده', completed: 'تمّ',
+    cancelled: 'ملغى', declined: 'مرفوض', no_show: 'لم يحضر',
   },
   status: {
     // Not an account_status: browse_members returns it for a visitor with
@@ -1229,6 +1395,28 @@ const QUEUE_TABS = [
   ['all', 'الكل'],
 ];
 
+// The desk's sections. Counts come from admin_stats, so a reviewer can
+// see where the work is without opening each one.
+const DESK_TABS = [
+  ['admin', 'الطلبات', (s) => s?.waiting],
+  ['admin-photos', 'الصور', (s) => s?.photos_pending],
+  ['admin-requests', 'طلبات الصور', (s) => s?.requests_pending],
+  ['admin-reports', 'البلاغات', (s) => s?.reports_open],
+  ['admin-meetings', 'اللقاءات', (s) => s?.meetings_pending],
+  ['admin-search', 'بحث', () => 0],
+  ['admin-audit', 'السجلّ', () => 0],
+  ['admin-stats', 'الأرقام', () => 0],
+];
+
+const deskNav = (current) => `
+  <div class="chips scroll-row" style="margin-bottom:16px">
+    ${DESK_TABS.map(([id, label, count]) => {
+      const n = count(state.stats);
+      return `<button class="chip" data-go="${id}" aria-pressed="${id === current}">${label}${
+        n ? ` (${n})` : ''}</button>`;
+    }).join('')}
+  </div>`;
+
 screens.admin = () => {
   const q = state.queue;
 
@@ -1282,6 +1470,7 @@ screens.admin = () => {
   <div class="screen">
     ${appbar('مكتب المراجعة', { side: q ? `${(q.rows || []).length}` : '' })}
     <div class="pad">
+      ${deskNav('admin')}
       <div class="chips scroll-row" style="margin-bottom:16px">
         ${QUEUE_TABS.map(([id, label]) => `
           <button class="chip" data-queue="${id}"
@@ -1304,6 +1493,8 @@ screens.admin = () => {
                   ${escapeAttr(r.city || '—')} · ${word('status', r.status)}
                   ${r.photo_count ? ` · ${r.photo_count} صور` : ' · بلا صور'}
                 </div>
+                <button class="btn quiet" style="width:auto;padding:6px 0;margin-top:6px"
+                        data-member="${escapeAttr(r.id)}">فتح الملف</button>
               </div>
             </div>
 
@@ -1389,6 +1580,605 @@ async function loadQueue(filter = state.queueFilter || 'waiting') {
 }
 
 // --------------------------------------------------------------------- //
+// The rest of the review desk
+// --------------------------------------------------------------------- //
+
+/** A photo, veiled, with its signed URL fetched after paint. */
+const adminPhoto = (path, extra = '') => `
+  <div class="photo-cell" data-path="${escapeAttr(path)}">
+    <div class="photo-veil">${star(22, 'var(--accent)', 0.4)}</div>
+    <img alt="" data-signed="${escapeAttr(path)}" class="unveiled">
+    ${extra}
+  </div>`;
+
+// ── photos waiting for approval ───────────────────────────────────────
+
+const PHOTO_FILTERS = [['pending', 'تنتظر'], ['approved', 'معتمدة'], ['all', 'الكل']];
+
+screens['admin-photos'] = () => {
+  const q = state.photoQueue;
+  const rows = q?.rows;
+  const filter = state.photoFilter || 'pending';
+  return `
+  <div class="screen">
+    ${appbar('الصور', { side: rows ? String(rows.length) : '' })}
+    <div class="pad">
+      ${deskNav('admin-photos')}
+      <div class="chips scroll-row" style="margin-bottom:16px">
+        ${PHOTO_FILTERS.map(([id, label]) => `
+          <button class="chip" data-photo-filter="${id}" aria-pressed="${filter === id}">
+            ${label}${q?.counts?.[id] ? ` (${q.counts[id]})` : ''}
+          </button>`).join('')}
+      </div>
+      ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : rows.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">${
+            filter === 'pending' ? 'لا صور تنتظر المراجعة — أُنجز كل شيء.'
+            : filter === 'approved' ? 'لم تُعتمد أي صورة بعد.'
+            : 'لا صور بعد.'}</p></div>`
+        : rows.map((ph) => `
+          <div class="panel">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+              <div style="width:96px;flex:none">
+                ${adminPhoto(ph.storage_path, ph.is_primary
+                  ? '<div class="photo-tags"><span class="photo-tag">الأساسية</span></div>' : '')}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16px;font-weight:600">
+                  ${escapeAttr(ph.display_name || 'بلا اسم')}${ph.age ? `، ${ph.age}` : ''}
+                </div>
+                <div class="tiny muted" style="margin-top:2px">
+                  ${escapeAttr(ph.city || '—')} · ${word('status', ph.status)}
+                  ${ph.approved ? ' · <span style="color:var(--teal)">معتمدة</span>' : ''}
+                </div>
+                <button class="btn quiet" style="width:auto;padding:6px 0;margin-top:6px"
+                        data-member="${escapeAttr(ph.user_id)}">فتح الملف</button>
+              </div>
+            </div>
+            <div class="btn-row" style="margin-top:14px">
+              ${ph.approved ? `
+                <button class="btn ghost" style="color:var(--danger)"
+                        data-photo-action="delete" data-id="${escapeAttr(ph.id)}">حذف</button>
+                <button class="btn ghost wide" data-photo-action="unapprove"
+                        data-id="${escapeAttr(ph.id)}">سحب الاعتماد</button>`
+              : `
+                <button class="btn ghost" data-photo-action="delete" data-id="${escapeAttr(ph.id)}">حذف</button>
+                <button class="btn wide" data-photo-action="approve" data-id="${escapeAttr(ph.id)}">اعتماد</button>`}
+            </div>
+          </div>`).join('')}
+
+      <div class="panel tinted accent" style="margin-top:14px">
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          الصورة لا تظهر لأحد قبل اعتمادها — لا للمرشّحين ولا لمن مُنح إذناً.
+          الحذف نهائي، ويزيل الملف نفسه.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+// ── one member's record ───────────────────────────────────────────────
+
+screens.member = () => {
+  const m = state.member;
+  if (!m) {
+    return `<div class="screen">${appbar('ملف العضو')}
+      <div class="pad"><div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div></div></div>`;
+  }
+
+  const waiting = ['applying', 'pending_review'].includes(m.status);
+
+  return `
+  <div class="screen">
+    ${appbar(escapeAttr(m.display_name || 'ملف العضو'))}
+    <div class="pad">
+      <div class="panel">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:19px;font-weight:700">
+              ${escapeAttr(m.display_name || 'بلا اسم')}${m.age ? `، ${m.age}` : ''}
+            </div>
+            <div class="tiny muted" style="margin-top:3px">
+              ${escapeAttr(m.city || '—')} · ${word('status', m.status)}
+              ${m.reports_against ? ` · <span style="color:var(--danger)">${
+                m.reports_against} بلاغ</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${(m.photos || []).length ? `
+        <p class="eyebrow">الصور</p>
+        <div class="panel">
+          <div class="photo-grid">
+            ${m.photos.map((ph) => adminPhoto(ph.storage_path, `
+              <div class="photo-tags">
+                ${ph.is_primary ? '<span class="photo-tag">الأساسية</span>' : ''}
+                <span class="photo-tag ${ph.approved ? '' : 'pending'}">${
+                  ph.approved ? 'معتمدة' : 'تنتظر'}</span>
+              </div>`)).join('')}
+          </div>
+        </div>` : ''}
+
+      <p class="eyebrow">ما قدّمه</p>
+      <div class="panel tight">
+        ${fact('الحالة', word('marital_status', m.marital_status))}
+        ${fact('الالتزام', word('practice_level', m.practice_level))}
+        ${fact('الإطار الزمني', word('timeline', m.timeline))}
+        ${fact('العمل', m.occupation)}
+        ${fact('التعليم', m.education)}
+        ${fact('الأبناء', m.children_count)}
+        ${fact('الانتقال', m.willing_to_relocate ? 'مستعد' : 'يفضّل مدينته')}
+        ${fact('العائلة', m.family_aware ? 'على علم' : 'ليست على علم')}
+        ${fact('وضع الوليّ', m.wali_required ? 'مطلوب' : 'غير مطلوب')}
+        ${fact('تقدّم الطلب', m.applied_at ? new Date(m.applied_at).toLocaleDateString('ar') : '—')}
+      </div>
+
+      ${m.bio ? `
+        <p class="eyebrow">بكلماته</p>
+        <div class="panel flat"><p style="margin:0;font-size:15px;line-height:1.95">${
+          escapeAttr(m.bio)}</p></div>` : ''}
+
+      <p class="eyebrow">سجلّ القرارات</p>
+      <div class="panel tight">
+        ${(m.decisions || []).length === 0
+          ? '<p class="muted tiny" style="margin:0">لا قرارات بعد.</p>'
+          : m.decisions.map((d) => `
+            <div class="line-item" style="align-items:baseline">
+              <span class="tiny muted" style="min-width:104px">${
+                new Date(d.created_at).toLocaleDateString('ar')}</span>
+              <span style="flex:1;font-size:14.5px">
+                ${escapeAttr(d.action)} · ${escapeAttr(d.reason_code)}
+                ${d.by ? `<span class="tiny muted"> — ${escapeAttr(d.by)}</span>` : ''}
+                ${d.notes ? `<br><span class="tiny muted">${escapeAttr(d.notes)}</span>` : ''}
+              </span>
+            </div>`).join('')}
+      </div>
+
+      ${m.user_id === state.userId ? `
+        <div class="panel tinted accent" style="margin-top:18px">
+          <p style="margin:0;font-size:14px">هذا ملفك أنت. لا يبتّ المراجع في طلبه.</p>
+        </div>`
+        : `
+        <div class="btn-row" style="margin-top:18px">
+          ${waiting ? `
+            <button class="btn ghost" data-decide-user="reject" data-id="${escapeAttr(m.user_id)}">رفض</button>
+            <button class="btn wide" data-decide-user="admit" data-id="${escapeAttr(m.user_id)}">قبول</button>`
+          : m.status === 'admitted' ? `
+            <button class="btn ghost" data-decide-user="shadow_limit" data-id="${escapeAttr(m.user_id)}">تحديد الظهور</button>
+            <button class="btn ghost" style="color:var(--danger)"
+                    data-decide-user="ban_account" data-id="${escapeAttr(m.user_id)}">حظر</button>`
+          : `
+            <button class="btn wide" data-decide-user="unban" data-id="${escapeAttr(m.user_id)}">إعادة للمراجعة</button>`}
+        </div>`}
+    </div>
+  </div>`;
+};
+
+// ── reports ───────────────────────────────────────────────────────────
+
+screens['admin-reports'] = () => {
+  const q = state.reports;
+  return `
+  <div class="screen">
+    ${appbar('البلاغات', { side: q ? String((q.rows || []).length) : '' })}
+    <div class="pad">
+      ${deskNav('admin-reports')}
+      ${!q ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : (q.rows || []).length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا بلاغات مفتوحة.</p></div>`
+        : (q.rows || []).map((r) => `
+          <div class="panel">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              ${ico.warn}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16px;font-weight:600">${word('reason', r.reason)}</div>
+                <div class="tiny muted" style="margin-top:2px">
+                  ضدّ ${escapeAttr(r.reported_name || '—')} · ${word('status', r.reported_status)}
+                  ${r.reports_against_total > 1
+                    ? ` · <span style="color:var(--danger)">${r.reports_against_total} بلاغات عليه</span>` : ''}
+                </div>
+                <div class="tiny muted">
+                  من ${escapeAttr(r.reporter_name || '—')}
+                  ${r.reports_by_reporter > 2
+                    ? ` · <span style="color:var(--caution)">قدّم ${r.reports_by_reporter} بلاغات</span>` : ''}
+                </div>
+              </div>
+            </div>
+            ${r.detail ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p style="margin:0;font-size:14.5px;line-height:1.85">${escapeAttr(r.detail)}</p>
+              </div>` : ''}
+            <button class="btn quiet" style="width:auto;padding:6px 0;margin-top:8px"
+                    data-member="${escapeAttr(r.reported_id)}">فتح ملف المبلَّغ عنه</button>
+            ${r.status === 'open' ? `
+              <div class="btn-row" style="margin-top:12px">
+                <button class="btn ghost" data-report="dismissed" data-id="${escapeAttr(r.id)}">لا إجراء</button>
+                <button class="btn wide" data-report="actioned" data-id="${escapeAttr(r.id)}">اتُّخذ إجراء</button>
+              </div>` : `<p class="tiny muted" style="margin-top:10px">${
+                r.status === 'actioned' ? 'اتُّخذ إجراء' : 'أُغلق دون إجراء'}</p>`}
+          </div>`).join('')}
+
+      <div class="panel tinted accent" style="margin-top:14px">
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          عدد البلاغات التي قدّمها المُبلِّغ معروض عمداً: البلاغ دليل على صاحبه
+          كما هو دليل على من اشتُكي منه.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+// ── photo access requests, screened before she ever sees them ─────────
+
+screens['admin-requests'] = () => {
+  const rows = state.photoRequests;
+  return `
+  <div class="screen">
+    ${appbar('طلبات الصور', { side: rows ? String(rows.length) : '' })}
+    <div class="pad">
+      ${deskNav('admin-requests')}
+      ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : rows.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا طلبات تنتظر الفرز.</p></div>`
+        : rows.map((r) => `
+          <div class="panel">
+            <div style="font-size:16px;font-weight:600">
+              ${escapeAttr(r.requester_name || '—')}${r.requester_age ? `، ${r.requester_age}` : ''}
+              <span class="tiny muted" style="font-weight:400"> يطلب رؤية صور ${
+                escapeAttr(r.owner_name || '—')}</span>
+            </div>
+            <div class="tiny muted" style="margin-top:2px">
+              ${word('status', r.requester_status)}
+              ${r.requests_by_requester > 3
+                ? ` · <span style="color:var(--caution)">قدّم ${r.requests_by_requester} طلباً</span>` : ''}
+            </div>
+            ${r.note ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p style="margin:0;font-size:14.5px;line-height:1.85">${escapeAttr(r.note)}</p>
+              </div>` : '<p class="tiny muted" style="margin-top:10px">بلا رسالة.</p>'}
+            <button class="btn quiet" style="width:auto;padding:6px 0;margin-top:8px"
+                    data-member="${escapeAttr(r.requester_id)}">فتح ملف الطالب</button>
+            <div class="btn-row" style="margin-top:12px">
+              <button class="btn ghost" data-screen-request="no" data-id="${escapeAttr(r.id)}">إيقاف</button>
+              <button class="btn wide" data-screen-request="yes" data-id="${escapeAttr(r.id)}">تمرير إليها</button>
+            </div>
+            <p class="note">الطلب الموقوف لا يصلها، ولا تُخطَر به.</p>
+          </div>`).join('')}
+    </div>
+  </div>`;
+};
+
+// ── the numbers ───────────────────────────────────────────────────────
+
+const statTile = (label, value, note = '') => `
+  <div class="panel" style="margin:0">
+    <div style="font-size:26px;font-weight:700;line-height:1.2">${value}</div>
+    <div class="tiny muted" style="margin-top:2px">${label}</div>
+    ${note ? `<div class="tiny" style="margin-top:4px;color:var(--caution)">${note}</div>` : ''}
+  </div>`;
+
+screens['admin-stats'] = () => {
+  const s = state.stats;
+  return `
+  <div class="screen">
+    ${appbar('الأرقام')}
+    <div class="pad">
+      ${deskNav('admin-stats')}
+      ${!s ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>` : `
+        <div class="stat-grid">
+          ${statTile('في الانتظار', s.waiting ?? 0,
+            s.longest_wait_hours > 24 ? `أقدم طلب: ${Math.round(s.longest_wait_hours / 24)} يوم` : '')}
+          ${statTile('أعضاء مقبولون', s.admitted ?? 0)}
+          ${statTile('صور تنتظر', s.photos_pending ?? 0)}
+          ${statTile('طلبات صور', s.requests_pending ?? 0)}
+          ${statTile('بلاغات مفتوحة', s.reports_open ?? 0)}
+          ${statTile('محادثات نشطة', s.matches_active ?? 0)}
+        </div>
+
+        <p class="eyebrow" style="margin-top:22px">آخر ٧ أيام</p>
+        <div class="panel tight">
+          ${fact('طلبات جديدة', s.applied_7d ?? 0)}
+          ${fact('قرارات', s.decided_7d ?? 0)}
+        </div>
+
+        <p class="eyebrow" style="margin-top:22px">زمن الانتظار</p>
+        <div class="panel tight">
+          ${fact('أطول انتظار', s.longest_wait_hours
+            ? `${s.longest_wait_hours} ساعة` : 'لا أحد ينتظر')}
+          ${fact('وسيط زمن القرار', s.median_decision_hours
+            ? `${s.median_decision_hours} ساعة` : '—')}
+        </div>
+
+        <div class="panel tinted accent" style="margin-top:18px">
+          <p style="margin:0;font-size:14px;line-height:1.85">
+            نعرض أطول انتظار لا متوسّطه. المتوسّط يخفي الشخص الذي ينتظر منذ
+            أسبوع خلف عشرة قرارات سريعة — وهو الشخص الذي يغادر.
+          </p>
+        </div>`}
+    </div>
+  </div>`;
+};
+
+async function loadMyPhotos() {
+  try {
+    const [requests, grants] = await Promise.all([
+      state.db.myPhotoRequests(), state.db.myPhotoGrants(),
+    ]);
+    state.myRequests = requests;
+    state.myGrants = grants;
+  } catch (error) {
+    state.myRequests = [];
+    state.myGrants = [];
+    console.warn('[nasib] photos:', error.message);
+  }
+}
+
+async function loadMatches() {
+  try { state.matches = await state.db.myMatches(); }
+  catch (error) { state.matches = []; console.warn('[nasib] matches:', error.message); }
+}
+
+async function loadThread() {
+  if (!state.openMatch) return;
+  try { state.thread = await state.db.matchThread(state.openMatch); }
+  catch (error) { state.thread = { messages: [] }; toast(error.message); }
+}
+
+async function loadMeetings() {
+  try { state.meetings = await state.db.myMeetings(); }
+  catch (error) { state.meetings = []; console.warn('[nasib] meetings:', error.message); }
+}
+
+// ── search ────────────────────────────────────────────────────────────
+
+screens['admin-search'] = () => `
+  <div class="screen">
+    ${appbar('بحث')}
+    <div class="pad">
+      ${deskNav('admin-search')}
+      <label class="field">
+        <span>الاسم، المدينة، أو معرّف الحساب</span>
+        <input type="search" id="search-q" value="${escapeAttr(state.searchQ || '')}"
+               placeholder="ليلى، رام الله، 43df2ce6" autocomplete="off">
+      </label>
+
+      ${state.searchResults === null ? ''
+        : state.searchResults.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا نتائج.</p></div>`
+        : state.searchResults.map((r) => `
+          <div class="panel">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16.5px;font-weight:600">
+                  ${escapeAttr(r.display_name || 'بلا اسم')}${r.age ? `، ${r.age}` : ''}
+                </div>
+                <div class="tiny muted" style="margin-top:2px">
+                  ${escapeAttr(r.city || '—')} · ${word('status', r.status)}
+                  ${r.photo_count ? ` · ${r.photo_count} صور` : ''}
+                </div>
+              </div>
+              <button class="btn quiet" style="width:auto"
+                      data-member="${escapeAttr(r.id)}">فتح</button>
+            </div>
+          </div>`).join('')}
+    </div>
+  </div>`;
+
+function wireSearch() {
+  const input = document.getElementById('search-q');
+  if (!input) return;
+
+  // Typed into, not submitted: a reviewer looking for one person types a
+  // few letters and expects the list to narrow. Debounced, because one
+  // request per keystroke is a request per keystroke.
+  let timer;
+  input.addEventListener('input', () => {
+    state.searchQ = input.value;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (q.length < 2) { state.searchResults = null; return render('admin-search'); }
+      try {
+        state.searchResults = await state.db.adminSearch(q);
+      } catch (error) {
+        state.searchResults = [];
+        toast(error.message);
+      }
+      // Re-rendering moves focus, so it is restored with the caret where
+      // it was — otherwise every result that arrives interrupts typing.
+      const at = input.selectionStart;
+      render('admin-search');
+      const again = document.getElementById('search-q');
+      if (again) { again.focus(); again.setSelectionRange(at, at); }
+    }, 250);
+  });
+  input.focus();
+}
+
+// ── meetings waiting on the office ────────────────────────────────────
+
+screens['admin-meetings'] = () => {
+  const q = state.adminMeetings;
+  const rows = q?.rows;
+  return `
+  <div class="screen">
+    ${appbar('اللقاءات', { side: rows ? String(rows.length) : '' })}
+    <div class="pad">
+      ${deskNav('admin-meetings')}
+      ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : rows.length === 0
+        ? `<div class="panel">
+             <p style="margin:0;font-size:15px;line-height:1.9">
+               لا لقاءات تنتظر موعداً. يظهر اللقاء هنا بعد موافقة الطرفين،
+               ليُحدَّد له موعد في أحد المكاتب.
+             </p>
+           </div>`
+        : rows.map((m) => `
+          <div class="panel">
+            <div style="font-size:16.5px;font-weight:600">
+              ${escapeAttr(m.party_a || '—')} و${escapeAttr(m.party_b || '—')}
+            </div>
+            <div class="tiny muted" style="margin-top:2px">
+              ${word('meeting', m.state)} · ${escapeAttr(m.city || '—')}
+              · اقتُرح ${new Date(m.proposed_at).toLocaleDateString('ar')}
+            </div>
+            ${m.note ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p style="margin:0;font-size:14.5px;line-height:1.85">${escapeAttr(m.note)}</p>
+              </div>` : ''}
+            ${(m.proposer_brings_family || m.invitee_brings_family) ? `
+              <div class="line-item" style="margin-top:8px">${ico.family}<span class="tiny">
+                ${m.proposer_brings_family && m.invitee_brings_family
+                  ? 'الطرفان يحضران مع أهلهما — غرفة أكبر'
+                  : 'أحد الطرفين يحضر مع أهله'}
+              </span></div>` : ''}
+
+            ${m.starts_at ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <div class="tiny">${escapeAttr(m.office || '')} · ${
+                  escapeAttr(m.room || '')} · ${escapeAttr(m.staff_name || '')}</div>
+                <div style="font-size:15px;margin-top:4px">${
+                  new Date(m.starts_at).toLocaleString('ar', {
+                    weekday: 'long', day: 'numeric', month: 'long',
+                    hour: 'numeric', minute: '2-digit' })}</div>
+              </div>`
+            : `
+              <div style="margin-top:12px">
+                <p class="eyebrow">اختر موعداً</p>
+                ${(state.slots || []).length === 0 ? `
+                  <p class="tiny muted" style="margin:0;line-height:1.85">
+                    لا مواعيد متاحة. تُضاف المواعيد إلى جدول office_slots — بلا
+                    مواعيد لا يمكن تحديد أي لقاء.
+                  </p>`
+                : `<div class="chips" style="gap:8px">
+                    ${(state.slots || []).slice(0, 8).map((slot) => `
+                      <button class="chip" data-schedule="${escapeAttr(m.id)}"
+                              data-slot="${escapeAttr(slot.slot_id || slot.id)}">
+                        ${new Date(slot.starts_at).toLocaleString('ar', {
+                          day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                        ${slot.room ? ` · ${escapeAttr(slot.room)}` : ''}
+                      </button>`).join('')}
+                  </div>`}
+              </div>`}
+          </div>`).join('')}
+    </div>
+  </div>`;
+};
+
+// ── the audit trail ───────────────────────────────────────────────────
+
+screens['admin-audit'] = () => {
+  const rows = state.audit;
+  return `
+  <div class="screen">
+    ${appbar('السجلّ')}
+    <div class="pad">
+      ${deskNav('admin-audit')}
+
+      <p class="eyebrow">المراجعون</p>
+      <div class="panel tight">
+        ${!state.reviewers ? '<p class="muted tiny" style="margin:0">…</p>'
+          : state.reviewers.map((r) => `
+            <div class="line-item" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px" dir="ltr">${escapeAttr(r.email)}</div>
+                <div class="tiny muted">
+                  ${r.decisions} قرار
+                  ${r.last_decision ? ` · آخرها ${
+                    new Date(r.last_decision).toLocaleDateString('ar')}` : ''}
+                  ${r.active ? '' : ' · موقوف'}
+                </div>
+              </div>
+              ${r.is_me ? '<span class="badge photo">أنت</span>' : ''}
+            </div>`).join('')}
+      </div>
+      <p class="note">
+        تُمنح الصلاحية وتُسحب من محرّر SQL فقط. لا يستطيع مراجع أن يمنح نفسه
+        أو غيره، ولا أن يوقف زميلاً من داخل التطبيق.
+      </p>
+
+      <p class="eyebrow" style="margin-top:22px">آخر ما جرى</p>
+      ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : rows.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا شيء بعد.</p></div>`
+        : `<div class="panel tight">
+            ${rows.map((e) => `
+              <div class="line-item" style="align-items:baseline">
+                <span class="tiny muted" style="min-width:92px">${
+                  new Date(e.at).toLocaleString('ar', {
+                    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                <span style="flex:1;font-size:14px;line-height:1.8">
+                  <b>${escapeAttr(e.who || 'مراجع')}</b>
+                  ${e.kind === 'access'
+                    ? `فتح ملف ${escapeAttr(e.subject || '—')}`
+                    : `${escapeAttr(e.detail || e.what)}${
+                        e.subject ? ` — ${escapeAttr(e.subject)}` : ''}`}
+                </span>
+              </div>`).join('')}
+          </div>`}
+
+      <div class="panel tinted accent" style="margin-top:14px">
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          فتح ملف يُسجَّل كما يُسجَّل القرار. مراجع يتصفّح الملفات دون سبب هو
+          الخرق الذي يقع فعلاً، وهذا السجلّ هو ما يجعله مرئياً.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+async function loadSearch() { /* typed, not fetched on entry */ }
+
+async function loadAdminMeetings() {
+  try {
+    const [meetings, slots] = await Promise.all([
+      state.db.adminMeetings('pending'),
+      state.db.openSlots().catch(() => []),
+    ]);
+    state.adminMeetings = meetings;
+    state.slots = Array.isArray(slots) ? slots : [];
+  } catch (error) {
+    state.adminMeetings = { rows: [] };
+    toast(error.message);
+  }
+}
+
+async function loadAudit() {
+  try {
+    const [audit, reviewers] = await Promise.all([
+      state.db.adminAudit(), state.db.adminReviewers(),
+    ]);
+    state.audit = audit;
+    state.reviewers = reviewers;
+  } catch (error) {
+    state.audit = [];
+    toast(error.message);
+  }
+}
+
+async function loadPhotoQueue() {
+  try { state.photoQueue = await state.db.adminPhotoQueue(state.photoFilter || 'pending'); }
+  catch (error) { state.photoQueue = { rows: [] }; toast(error.message); }
+}
+async function loadReports() {
+  try { state.reports = await state.db.adminReports('open'); }
+  catch (error) { state.reports = { rows: [] }; toast(error.message); }
+}
+async function loadPhotoRequests() {
+  try { state.photoRequests = await state.db.adminPhotoRequests(); }
+  catch (error) { state.photoRequests = []; toast(error.message); }
+}
+async function loadStats() {
+  try { state.stats = await state.db.adminStats(); }
+  catch { state.stats = null; }   // the nav just shows no counts
+}
+async function loadMember() {
+  try { state.member = await state.db.adminMember(state.memberId); }
+  catch (error) { state.member = null; toast(error.message); }
+}
+
+// --------------------------------------------------------------------- //
 // Router
 // --------------------------------------------------------------------- //
 
@@ -1458,6 +2248,33 @@ function render(name) {
   if (name === 'profile') fetchOnce('profile', loadProfile);
   if (name === 'admin') fetchOnce('admin', loadQueue);
   if (name === 'today') fetchOnce('today', loadMembers);
+  if (name === 'admin-photos') fetchOnce('admin-photos', loadPhotoQueue);
+  if (name === 'admin-requests') fetchOnce('admin-requests', loadPhotoRequests);
+  if (name === 'admin-reports') fetchOnce('admin-reports', loadReports);
+  if (name === 'admin-meetings') fetchOnce('admin-meetings', loadAdminMeetings);
+  if (name === 'admin-audit') fetchOnce('admin-audit', loadAudit);
+  if (name === 'admin-search') wireSearch();
+  if (name === 'member') fetchOnce('member', loadMember);
+  if (name === 'photos') fetchOnce('photos', loadMyPhotos);
+  if (name === 'meeting') fetchOnce('meeting', loadMeetings);
+  if (name === 'chat') {
+    fetchOnce('chat', loadMatches);
+    if (state.openMatch) fetchOnce(`thread:${state.openMatch}`, loadThread, 'chat');
+  }
+
+  // The desk's nav shows counts on every one of its screens, so the
+  // numbers are fetched once and shared rather than per screen.
+  if (name.startsWith('admin') || name === 'member') fetchOnce('stats', loadStats);
+
+  // Signed URLs for any veiled photo on the page. Private bucket, short
+  // expiry — nothing here is worth caching.
+  if (state.db) {
+    for (const img of document.querySelectorAll('img[data-signed]:not([src])')) {
+      state.db.signedUrl(img.dataset.signed)
+        .then((url) => { if (url) img.src = url; })
+        .catch(() => {});
+    }
+  }
 }
 
 /**
@@ -1483,13 +2300,26 @@ function fetchOnce(key, load) {
     .catch((error) => console.warn(`[nasib] ${key}:`, error.message))
     // The key is the screen name, so this also covers the case where the
     // person navigated away while the request was in flight.
-    .finally(() => { if (current() === key) render(key); });
+    // `stats` is shared across the desk rather than being a screen of
+    // its own, so it repaints whatever is showing.
+    .finally(() => {
+      if (key === 'stats') { if (current().startsWith('admin') || current() === 'member') render(current()); }
+      else if (current() === key) render(key);
+    });
 }
 
 /** Mark a screen's data stale, so the next visit fetches it again. */
 function invalidate(...keys) {
   for (const key of keys) fetched.delete(key);
 }
+
+// Coming back to the tab is the moment someone expects to see what
+// changed while they were away — a decision, a reply, an approval.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  fetched.clear();
+  render(current());
+});
 
 const current = () => location.hash.slice(2) || 'welcome';
 
@@ -1827,14 +2657,38 @@ function paintThread() {
   const thread = document.getElementById('thread');
   if (!thread) return;
 
-  thread.innerHTML = state.messages.map((m) => {
-    const r = redact(m.body, { unlocked: state.contactUnlocked });
+  // Live messages arrive already redacted — the trigger did it on the way
+  // in, and `redacted` says so. Running the local rules over them again
+  // would be redacting redacted text. The local pass stays for the
+  // fixtures, and for the composer, where it earns its keep by warning
+  // before anything is sent.
+  const messages = state.db
+    ? (state.thread?.messages || []).map((m) => ({
+        from: m.mine ? 'me' : 'them', body: m.body, serverRedacted: m.redacted,
+        kinds: Object.keys(m.flags || {}),
+      }))
+    : state.messages;
+
+  const unlocked = state.db ? !!state.thread?.contact_unlocked : state.contactUnlocked;
+
+  thread.innerHTML = messages.map((m) => {
+    if (m.serverRedacted !== undefined) {
+      return `
+        <div class="bubble ${m.from === 'me' ? 'me' : 'them'}">
+          ${escapeAttr(m.body)}
+          ${m.serverRedacted
+            ? `<small>حُذفت بيانات شخصية من هذه الرسالة</small>` : ''}
+        </div>`;
+    }
+    const r = redact(m.body, { unlocked });
     return `
       <div class="bubble ${m.from === 'me' ? 'me' : 'them'}">
         ${r.text}
         ${r.redacted ? `<small>حُذف ${r.summary} من هذه الرسالة</small>` : ''}
       </div>`;
   }).join('');
+
+  thread.scrollTop = thread.scrollHeight;
 }
 
 function wireChat() {
@@ -1848,7 +2702,8 @@ function wireChat() {
     draft.style.height = 'auto';
     draft.style.height = `${Math.min(draft.scrollHeight, 110)}px`;
 
-    const r = redact(draft.value, { unlocked: state.contactUnlocked });
+    const unlocked = state.db ? !!state.thread?.contact_unlocked : state.contactUnlocked;
+    const r = redact(draft.value, { unlocked });
     send.disabled = draft.value.trim() === '' || r.redacted;
 
     if (!r.redacted) { warning.innerHTML = ''; return; }
@@ -1874,13 +2729,32 @@ function wireChat() {
   draft.addEventListener('input', check);
   check();
 
-  send.addEventListener('click', () => {
+  send.addEventListener('click', async () => {
     const body = draft.value.trim();
     if (!body) return;
-    state.messages.push({ from: 'me', body });
-    draft.value = '';
-    check();
-    paintThread();
+
+    if (!state.db) {
+      state.messages.push({ from: 'me', body });
+      draft.value = '';
+      check();
+      return paintThread();
+    }
+
+    send.disabled = true;
+    try {
+      await state.db.sendMessage(state.openMatch, body);
+      draft.value = '';
+      // Re-read rather than appending what was typed: the server may have
+      // altered it, and showing the sender their original while the
+      // recipient sees a redacted copy is the one outcome worth avoiding.
+      state.thread = await state.db.matchThread(state.openMatch);
+      check();
+      paintThread();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      send.disabled = false;
+    }
   });
 }
 
@@ -1889,7 +2763,7 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-member], [data-photo-action], [data-photo-filter], [data-schedule], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting]');
   if (!el) return;
 
   if (el.dataset.loginMode) {
@@ -1935,6 +2809,122 @@ document.addEventListener('click', async (event) => {
   if (el.dataset.tab) return go(el.dataset.tab);
 
   // ── the review desk ──────────────────────────────────────────────────
+  if (el.dataset.openMatch) {
+    state.openMatch = el.dataset.openMatch;
+    state.thread = null;
+    return render('chat');
+  }
+
+  if (el.dataset.cancelMeeting) {
+    // Cancelling is not undoable and the other side is told, so it asks.
+    // A confirm() would freeze the extension that drives these tests, and
+    // a second tap is a clearer commitment anyway.
+    if (el.dataset.confirming !== 'yes') {
+      el.dataset.confirming = 'yes';
+      el.textContent = 'اضغط مرة أخرى للتأكيد';
+      return;
+    }
+    try {
+      await state.db.rpc('cancel_meeting', { p_meeting_id: el.dataset.cancelMeeting });
+      invalidate('meeting');
+      state.meetings = null;
+      toast('أُلغي اللقاء، وأُبلغ الطرف الآخر.');
+      return render('meeting');
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
+
+  // ── the rest of the desk ─────────────────────────────────────────────
+  if (el.dataset.member) {
+    state.member = null;
+    state.memberId = el.dataset.member;
+    invalidate('member');
+    return go('member');
+  }
+
+  if (el.dataset.photoFilter) {
+    state.photoFilter = el.dataset.photoFilter;
+    state.photoQueue = null;
+    invalidate('admin-photos');
+    return render('admin-photos');
+  }
+
+  if (el.dataset.photoAction) {
+    const action = el.dataset.photoAction;
+
+    // Deleting destroys the file. A second tap is the confirmation —
+    // confirm() would freeze the browser tools that drive the tests, and
+    // is easy to dismiss by reflex anyway.
+    if (action === 'delete' && el.dataset.confirming !== 'yes') {
+      el.dataset.confirming = 'yes';
+      el.textContent = 'تأكيد الحذف';
+      return;
+    }
+
+    el.disabled = true;
+    try {
+      const result = await state.db.adminPhotoAction(el.dataset.id, action);
+      // Deleting removes the row; the file has to follow, and the
+      // function hands back the path precisely so it can.
+      if (action === 'delete' && result?.storage_path) {
+        await state.db.deleteStorageObject?.(result.storage_path);
+      }
+      toast(action === 'approve' ? 'اعتُمدت الصورة.'
+          : action === 'unapprove' ? 'سُحب الاعتماد — عادت للمراجعة.'
+          : 'حُذفت الصورة.');
+      invalidate('admin-photos', 'stats', 'member');
+      state.photoQueue = null;
+      return render('admin-photos');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.schedule) {
+    el.disabled = true;
+    try {
+      await state.db.adminScheduleMeeting(el.dataset.schedule, el.dataset.slot);
+      toast('حُدّد موعد اللقاء، وأُبلغ الطرفان.');
+      invalidate('admin-meetings', 'stats');
+      state.adminMeetings = null;
+      return render('admin-meetings');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.report) {
+    el.disabled = true;
+    try {
+      await state.db.adminResolveReport(el.dataset.id, el.dataset.report);
+      toast(el.dataset.report === 'actioned' ? 'سُجّل الإجراء.' : 'أُغلق البلاغ.');
+      invalidate('admin-reports', 'stats');
+      state.reports = null;
+      return render('admin-reports');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.screenRequest) {
+    const allow = el.dataset.screenRequest === 'yes';
+    el.disabled = true;
+    try {
+      await state.db.adminScreenRequest(el.dataset.id, allow);
+      toast(allow ? 'مُرّر الطلب إليها.' : 'أُوقف الطلب، ولن تُخطَر به.');
+      invalidate('admin-requests', 'stats');
+      state.photoRequests = null;
+      return render('admin-requests');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
   if (el.dataset.queue) {
     state.queue = null;
     state.queueFilter = el.dataset.queue;
@@ -1953,7 +2943,16 @@ document.addEventListener('click', async (event) => {
       // The directory changes when somebody is admitted, so what is
       // cached about it is now wrong.
       state.members = null;
-      invalidate('today');
+      state.member = null;
+      invalidate('today', 'stats', 'member');
+
+      // From a member's record, stay on it — a reviewer who has just
+      // admitted someone usually wants to see the result, not be thrown
+      // back to a list.
+      if (current() === 'member') {
+        await loadMember();
+        return render('member');
+      }
       await loadQueue();
       return render('admin');
     } catch (error) {
@@ -1995,25 +2994,61 @@ document.addEventListener('click', async (event) => {
   }
 
   if (el.dataset.request) {
-    toast('وصل طلبك للإدارة. سيُراجَع قبل أن يصلها.');
+    if (!state.db) return toast('وصل طلبك للإدارة. سيُراجَع قبل أن يصلها.');
+    el.disabled = true;
+    try {
+      await state.db.requestPhotoAccess(el.dataset.request);
+      toast('وصل طلبك للإدارة. سيُراجَع قبل أن يصلها.');
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      el.disabled = false;
+    }
     return;
   }
 
   if (el.dataset.decidePhoto) {
-    state.requests = state.requests.filter((r) => r.id !== el.dataset.id);
-    if (el.dataset.decidePhoto === 'yes') {
-      state.grants.push({ id: `g${Date.now()}`, name: 'يوسف', days: 14, views: 0, shots: 0 });
-      toast('سمحتِ له برؤية صورك لمدة 14 يوماً.');
-    } else {
-      toast('لم نبلّغه بأي تفصيل.');
+    const approve = el.dataset.decidePhoto === 'yes';
+
+    if (!state.db) {
+      state.requests = state.requests.filter((r) => r.id !== el.dataset.id);
+      if (approve) {
+        state.grants.push({ id: `g${Date.now()}`, name: 'يوسف', days: 14, views: 0, shots: 0 });
+      }
+      toast(approve ? 'سمحتِ له برؤية صورك لمدة 14 يوماً.' : 'لم نبلّغه بأي تفصيل.');
+      return render('photos');
     }
-    return render('photos');
+
+    el.disabled = true;
+    try {
+      await state.db.respondToPhotoRequest(el.dataset.id, approve);
+      invalidate('photos');
+      state.myRequests = null;
+      state.myGrants = null;
+      toast(approve ? 'سمحتِ له برؤية صورك لمدة 14 يوماً.' : 'لم نبلّغه بأي تفصيل.');
+      return render('photos');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
   }
 
   if (el.dataset.revoke) {
-    state.grants = state.grants.filter((g) => g.id !== el.dataset.revoke);
-    toast('سُحب الإذن فوراً.');
-    return render('photos');
+    if (!state.db) {
+      state.grants = state.grants.filter((g) => g.id !== el.dataset.revoke);
+      toast('سُحب الإذن فوراً.');
+      return render('photos');
+    }
+    try {
+      await state.db.revokePhotoAccess(el.dataset.revoke);
+      invalidate('photos');
+      state.myRequests = null;
+      state.myGrants = null;
+      toast('سُحب الإذن فوراً.');
+      return render('photos');
+    } catch (error) {
+      return toast(error.message);
+    }
   }
 });
 
@@ -2075,11 +3110,14 @@ render(location.hash.slice(2) || 'welcome');
     state.db = null;
   }
 
-  // Repaint where the text or the data depends on being connected. The
-  // first render ran before `connect()` resolved, so any screen that
-  // fetches on render did not fetch — it saw `state.db` still null and
-  // skipped. Leaving one out here leaves it showing "loading…" forever.
-  if (['apply', 'welcome', 'profile', 'today', 'admin', 'review'].includes(current())) {
-    render(current());
-  }
+  // Repaint, whatever is showing. The first render ran before connect()
+  // resolved, so any screen that fetches on render did not fetch — it saw
+  // `state.db` still null and skipped, and without a second render it
+  // never tries again.
+  //
+  // This was a list of screen names, and a screen added later was not on
+  // it: admin-stats sat on "loading…" forever. A list that has to be kept
+  // in step with the screens is a list that will fall out of step, so
+  // there is no list.
+  render(current());
 })();

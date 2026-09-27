@@ -458,14 +458,14 @@ select assert(
 
 select act_as(:boss);
 
-select assert(jsonb_typeof(admin_photo_queue()) = 'array',
+select assert(jsonb_typeof(admin_photo_queue() -> 'rows') = 'array',
   'the photo queue is a list');
 select assert(
-  (select count(*) from jsonb_array_elements(admin_photo_queue()) q
+  (select count(*) from jsonb_array_elements(admin_photo_queue() -> 'rows') q
     where q ->> 'display_name' = 'ليلى') >= 1,
   'and holds the photos she uploaded, which start unapproved');
 select assert(
-  not (admin_photo_queue() -> 0 ? 'phone_e164'),
+  not (admin_photo_queue() -> 'rows' -> 0 ? 'phone_e164'),
   'without her phone number, which a reviewer does not need to judge a photo');
 
 -- Approving one.
@@ -473,26 +473,106 @@ do $$
 declare target uuid;
 begin
   select id into target from photos where approved = false limit 1;
-  perform admin_decide_photo(target, true, 'looks fine');
+  perform admin_photo_action(target, 'approve', 'looks fine');
   perform assert((select approved from photos where id = target),
     'approving a photo sets approved');
   perform assert(
     (select count(*) from admin_decisions
-      where reason_code = 'photo_approved') = 1,
+      where reason_code = 'photo_approve') = 1,
     'and is recorded against its owner, not only in the photo row');
+
+  -- The correction that was missing: approved by mistake, back to
+  -- pending, rather than destroyed.
+  perform admin_photo_action(target, 'unapprove', 'looked again');
+  perform assert((select approved from photos where id = target) = false,
+    'an approval can be taken back without deleting the photo');
+  perform assert(
+    (select count(*) from photos where id = target) = 1,
+    'and the photo is still there');
 end $$;
 
--- Rejecting removes it, and hands back the path so the file can follow.
+-- An approved photo is still findable — the queue that only ever empties
+-- is the queue that looks broken once the work is done.
+do $$
+declare target uuid;
+begin
+  select id into target from photos limit 1;
+  perform admin_photo_action(target, 'approve');
+  perform assert(
+    (select count(*) from jsonb_array_elements(
+      admin_photo_queue('approved') -> 'rows') q where q ->> 'id' = target::text) = 1,
+    'an approved photo appears under the approved filter');
+  perform assert(
+    (select count(*) from jsonb_array_elements(
+      admin_photo_queue('pending') -> 'rows') q where q ->> 'id' = target::text) = 0,
+    'and not under pending');
+  perform assert((admin_photo_queue() -> 'counts' ->> 'approved')::int >= 1,
+    'and the counts say how many of each there are');
+end $$;
+
+-- Deleting is final and takes the file with it.
 do $$
 declare target uuid; result jsonb;
 begin
   select id into target from photos where approved = false limit 1;
-  result := admin_decide_photo(target, false, 'not a face');
+  result := admin_photo_action(target, 'delete', 'not a face');
   perform assert((select count(*) from photos where id = target) = 0,
-    'rejecting a photo removes the row');
+    'deleting a photo removes the row');
   perform assert(result ->> 'storage_path' is not null,
     'and returns the storage path, so the object can be removed too');
 end $$;
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform admin_photo_action(
+    (select id from photos limit 1), 'set_on_fire');
+  exception when others then failed := true; end;
+  perform assert(failed, 'an action that is not one of the three is refused');
+end $$;
+
+-- ── search, meetings, audit, reviewers ────────────────────────────────
+select assert(
+  (select count(*) from jsonb_array_elements(admin_search('ليل')) r
+    where r ->> 'display_name' = 'ليلى') = 1,
+  'a member can be found by part of their name');
+select assert(
+  (select count(*) from jsonb_array_elements(admin_search('رام')) r) >= 1,
+  'or by city');
+select assert(
+  (select count(*) from jsonb_array_elements(
+    admin_search(substring(:her::text, 1, 8))) r where r ->> 'id' = :her::text) = 1,
+  'or by the first segment of their account id');
+select assert(jsonb_array_length(admin_search('x')) = 0,
+  'a one-character search returns nothing rather than everyone');
+
+select assert(jsonb_typeof(admin_meetings() -> 'rows') = 'array',
+  'meetings waiting on the office are listable');
+select assert(admin_meetings() -> 'counts' ? 'pending',
+  'with a count of how many are waiting');
+
+-- Open a record first, so the assertion below is about the audit trail
+-- rather than about the order the assertions happen to run in.
+select admin_member(:her);
+
+select assert(jsonb_typeof(admin_audit()) = 'array', 'the audit trail is readable');
+select assert(
+  (select count(*) from jsonb_array_elements(admin_audit()) e
+    where e ->> 'kind' = 'decision') >= 1,
+  'and holds the decisions that were made');
+select assert(
+  (select count(*) from jsonb_array_elements(admin_audit()) e
+    where e ->> 'kind' = 'access') >= 1,
+  'and the profiles that were opened, which is the half that deters');
+
+select assert(
+  (select count(*) from jsonb_array_elements(admin_reviewers()) r
+    where (r ->> 'is_me')::boolean) = 1,
+  'the reviewer list marks which one is you');
+select assert(
+  (select (r ->> 'decisions')::int from jsonb_array_elements(admin_reviewers()) r
+    where (r ->> 'is_me')::boolean) >= 1,
+  'and counts what each has decided');
 
 -- The member record.
 select assert((admin_member(:her) ->> 'display_name') = 'ليلى',
@@ -527,12 +607,16 @@ do $$
 declare blocked int := 0;
 begin
   begin perform admin_photo_queue();   exception when others then blocked := blocked + 1; end;
+  begin perform admin_search('ليل');   exception when others then blocked := blocked + 1; end;
+  begin perform admin_audit();         exception when others then blocked := blocked + 1; end;
+  begin perform admin_meetings();      exception when others then blocked := blocked + 1; end;
+  begin perform admin_reviewers();     exception when others then blocked := blocked + 1; end;
   begin perform admin_member('c0000000-0000-0000-0000-00000000000c'::uuid);
                                         exception when others then blocked := blocked + 1; end;
   begin perform admin_reports();       exception when others then blocked := blocked + 1; end;
   begin perform admin_photo_requests();exception when others then blocked := blocked + 1; end;
   begin perform admin_stats();         exception when others then blocked := blocked + 1; end;
-  begin perform admin_decide_photo(gen_random_uuid(), true);
+  begin perform admin_photo_action(gen_random_uuid(), 'approve');
                                         exception when others then blocked := blocked + 1; end;
   begin perform admin_resolve_report(gen_random_uuid(), 'dismissed');
                                         exception when others then blocked := blocked + 1; end;
@@ -543,7 +627,7 @@ begin
   -- The three above are callable by any signed-in role now, because the
   -- desk runs in a browser. The gate is is_admin() inside them, and that
   -- is what this counts.
-  perform assert(blocked = 9, 'every desk function refuses a member');
+  perform assert(blocked = 13, 'every desk function refuses a member');
 end $$;
 
 -- The member's own reads.
