@@ -192,6 +192,13 @@ page headed "reviewers" learns something about the product that is none
 of their business, and a reviewer does not want a page offering to make
 them an account.
 
+A new member fills in the whole application first and is asked for an
+email and password at the end, as the last step of submitting it — not
+before they have seen anything. The credential is required to *submit*,
+because an application nobody can return to is an orphan; it is not
+required to start, because asking someone to sign up for a product they
+have not seen is how they leave instead.
+
 Anyone who used the site before signing up has an anonymous account with
 their application on it. **ملفي** offers to add an email and password to
 *that* account rather than starting a new one — which matters, because
