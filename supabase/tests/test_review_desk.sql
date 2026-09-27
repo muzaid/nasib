@@ -451,3 +451,121 @@ select assert(
   'once an email is linked, the same session can apply');
 
 \echo '== admin login: done =='
+
+-- ── the reads behind the screens ──────────────────────────────────────
+\echo ''
+\echo '== reads =='
+
+select act_as(:boss);
+
+select assert(jsonb_typeof(admin_photo_queue()) = 'array',
+  'the photo queue is a list');
+select assert(
+  (select count(*) from jsonb_array_elements(admin_photo_queue()) q
+    where q ->> 'display_name' = 'ليلى') >= 1,
+  'and holds the photos she uploaded, which start unapproved');
+select assert(
+  not (admin_photo_queue() -> 0 ? 'phone_e164'),
+  'without her phone number, which a reviewer does not need to judge a photo');
+
+-- Approving one.
+do $$
+declare target uuid;
+begin
+  select id into target from photos where approved = false limit 1;
+  perform admin_decide_photo(target, true, 'looks fine');
+  perform assert((select approved from photos where id = target),
+    'approving a photo sets approved');
+  perform assert(
+    (select count(*) from admin_decisions
+      where reason_code = 'photo_approved') = 1,
+    'and is recorded against its owner, not only in the photo row');
+end $$;
+
+-- Rejecting removes it, and hands back the path so the file can follow.
+do $$
+declare target uuid; result jsonb;
+begin
+  select id into target from photos where approved = false limit 1;
+  result := admin_decide_photo(target, false, 'not a face');
+  perform assert((select count(*) from photos where id = target) = 0,
+    'rejecting a photo removes the row');
+  perform assert(result ->> 'storage_path' is not null,
+    'and returns the storage path, so the object can be removed too');
+end $$;
+
+-- The member record.
+select assert((admin_member(:her) ->> 'display_name') = 'ليلى',
+  'a reviewer can open one member''s record');
+select assert(jsonb_typeof(admin_member(:her) -> 'decisions') = 'array',
+  'with the decisions made about them');
+select assert(not (admin_member(:her) ? 'phone_e164')
+  and not (admin_member(:her) ? 'identity_confidence'),
+  'and without the phone number or any score');
+select assert(
+  (select count(*) from admin_access_log
+    where subject_user_id = :her and route = 'member') >= 1,
+  'opening a record is logged against the member whose record it is');
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform admin_member('00000000-0000-0000-0000-000000000000'::uuid);
+  exception when others then failed := true; end;
+  perform assert(failed, 'a member who does not exist is an error, not an empty record');
+end $$;
+
+-- Stats.
+select assert((admin_stats() ->> 'admitted')::int >= 2, 'stats count the admitted');
+select assert((admin_stats() ? 'longest_wait_hours'),
+  'and report the longest wait, which an average would hide');
+select assert((admin_stats() ->> 'photos_pending')::int >= 0, 'and the photo backlog');
+
+-- Every one of these is closed to a member.
+select act_as(:her);
+do $$
+declare blocked int := 0;
+begin
+  begin perform admin_photo_queue();   exception when others then blocked := blocked + 1; end;
+  begin perform admin_member('c0000000-0000-0000-0000-00000000000c'::uuid);
+                                        exception when others then blocked := blocked + 1; end;
+  begin perform admin_reports();       exception when others then blocked := blocked + 1; end;
+  begin perform admin_photo_requests();exception when others then blocked := blocked + 1; end;
+  begin perform admin_stats();         exception when others then blocked := blocked + 1; end;
+  begin perform admin_decide_photo(gen_random_uuid(), true);
+                                        exception when others then blocked := blocked + 1; end;
+  begin perform admin_resolve_report(gen_random_uuid(), 'dismissed');
+                                        exception when others then blocked := blocked + 1; end;
+  begin perform admin_screen_photo_request(gen_random_uuid(), true);
+                                        exception when others then blocked := blocked + 1; end;
+  begin perform schedule_meeting(gen_random_uuid(), gen_random_uuid());
+                                        exception when others then blocked := blocked + 1; end;
+  -- The three above are callable by any signed-in role now, because the
+  -- desk runs in a browser. The gate is is_admin() inside them, and that
+  -- is what this counts.
+  perform assert(blocked = 9, 'every desk function refuses a member');
+end $$;
+
+-- The member's own reads.
+select assert(jsonb_typeof(my_photo_requests()) = 'array', 'my photo requests is a list');
+select assert(jsonb_typeof(my_photo_grants()) = 'array',  'so is my grants list');
+select assert(jsonb_typeof(my_matches()) = 'array',       'and my matches');
+select assert(jsonb_typeof(my_meetings()) = 'array',      'and my meetings');
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform match_thread(gen_random_uuid());
+  exception when others then failed := true; end;
+  perform assert(failed, 'a thread you are not part of is not readable');
+end $$;
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform send_message(gen_random_uuid(), 'مرحبا');
+  exception when others then failed := true; end;
+  perform assert(failed, 'and not writable either');
+end $$;
+
+\echo '== reads: done =='

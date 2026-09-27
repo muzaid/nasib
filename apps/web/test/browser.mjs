@@ -104,8 +104,12 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
         body: JSON.stringify(stored ? { status: 'pending_review', display_name: stored.display_name } : null) });
     }
     if (url.includes('/rpc/whoami')) {
+      // Already signed in: this section is about what the form sends,
+      // not about onboarding. The account step has its own section.
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ user_id: 'u1', is_admin: false, has_row: !!stored,
+                               email: 'existing@example.com', has_credential: true,
+                               is_anonymous: false,
                                status: stored ? 'pending_review' : null }) });
     }
     if (url.includes('/rpc/my_profile')) {
@@ -641,6 +645,273 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   const staff = await page.locator('#app').innerText();
   check(staff.includes('دخول المراجعين'), '/#/staff is the reviewer screen');
   check(!staff.includes('ليس لديّ حساب'), 'and does not offer to create an account');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 8. the account step comes last, not first ----------
+//
+// A new member should be able to fill the whole application before being
+// asked to commit to anything. The credential is required to submit —
+// the database enforces that — but requiring it to *start* asks someone
+// to sign up for a product they have not seen.
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  let account = { id: 'u-fresh', email: null };
+  let linked = null;
+  let submitted = null;
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: account });
+    }
+    if (url.includes('/auth/v1/user') && method === 'PUT') {
+      account = { ...account, email: body.email };
+      linked = body.email;
+      return json(account);
+    }
+    if (url.includes('grant_type=refresh_token')) {
+      return json({ access_token: 't2', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: account });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: account.id, email: account.email,
+                    has_credential: !!account.email, is_anonymous: !account.email,
+                    is_admin: false, has_row: false });
+    }
+    if (url.includes('/rpc/my_application')) return json(null);
+    if (url.includes('/rpc/apply_for_membership')) {
+      // What the live database does for a session with no credential.
+      if (!account.email) {
+        return json({ code: 'P0001', message: 'أنشئ حساباً ببريد وكلمة مرور قبل إرسال الطلب' }, 400);
+      }
+      submitted = body.application;
+      return json({ status: 'applying', display_name: submitted.display_name });
+    }
+    return json({}, 404);
+  });
+
+  await page.goto(`${base}/#/apply`);
+  await page.waitForTimeout(700);
+
+  const form = await page.locator('#app').innerText();
+  check(errors.length === 0, `no page errors on the form ${errors.join('; ')}`);
+  check(!form.includes('البريد الإلكتروني'),
+        'a new member is not asked for an email before filling anything in');
+  check(await page.locator('input[name="display_name"]').count() === 1,
+        'the form itself is what they see first');
+
+  // Fill it in, then submit.
+  await page.locator('input[name="display_name"]').fill('نور');
+  await page.locator('input[name="date_of_birth"]').fill('1995-06-15');
+  await page.locator('input[name="city"]').fill('غزة');
+  await page.locator('#apply-submit').click();
+  await page.waitForTimeout(500);
+
+  check(await page.locator('#apply-account').count() === 1,
+        'the account step appears at the end, after the form is filled');
+  check(submitted === null, 'and nothing was sent before the account existed');
+
+  // A short password is caught before any request.
+  await page.locator('[name="apply-email"]').fill('noor@example.com');
+  await page.locator('[name="apply-password"]').fill('123');
+  await page.locator('#apply-account-submit').click();
+  await page.waitForTimeout(300);
+  check((await page.locator('#apply-account-error').innerText()).includes('٦ أحرف'),
+        'a short password is refused without a round trip');
+  check(linked === null, 'nothing was linked');
+
+  await page.locator('[name="apply-password"]').fill('a-good-password');
+  await page.locator('#apply-account-submit').click();
+  await page.waitForTimeout(900);
+
+  check(linked === 'noor@example.com', 'the account is created on submit');
+  check(submitted?.display_name === 'نور',
+        'and the application the person filled in is what gets sent');
+  check(submitted?.city === 'غزة', 'with every field they typed, not a blank form');
+  check(page.url().includes('camera'), 'then it carries on to the camera step');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 9. the rest of the desk, and the member screens ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  let photos = [
+    { id: 'ph-1', storage_path: 'u-x/1.jpg', is_primary: true, user_id: 'u-x',
+      display_name: 'ليلى', city: 'رام الله', age: 29, status: 'admitted' },
+    { id: 'ph-2', storage_path: 'u-y/2.jpg', is_primary: false, user_id: 'u-y',
+      display_name: 'عمر', city: 'نابلس', age: 33, status: 'admitted' },
+  ];
+  let reports = [{ id: 'r-1', reason: 'asked_for_money', detail: 'طلب مالاً للسفر',
+                   status: 'open', created_at: new Date().toISOString(),
+                   reported_id: 'u-y', reported_name: 'عمر', reported_status: 'admitted',
+                   reporter_id: 'u-x', reporter_name: 'ليلى',
+                   reports_against_total: 2, reports_by_reporter: 1 }];
+  let requests = [{ id: 'q-1', note: 'أودّ التعرّف', created_at: new Date().toISOString(),
+                    requester_id: 'u-y', requester_name: 'عمر', requester_status: 'admitted',
+                    requester_age: 33, owner_id: 'u-x', owner_name: 'ليلى',
+                    requests_by_requester: 1 }];
+  const acted = [];
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-boss', email: 'boss@nasib.app' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-boss', email: 'boss@nasib.app', is_admin: true,
+                    has_credential: true, is_anonymous: false, has_row: false });
+    }
+    if (url.includes('/rpc/my_application')) return json(null);
+    if (url.includes('/rpc/admin_stats')) {
+      return json({ waiting: 3, admitted: 2, photos_pending: photos.length,
+                    requests_pending: requests.length,
+                    reports_open: reports.filter((r) => r.status === 'open').length,
+                    matches_active: 1, applied_7d: 4, decided_7d: 2,
+                    longest_wait_hours: 50, median_decision_hours: 6 });
+    }
+    if (url.includes('/rpc/admin_photo_queue')) return json(photos);
+    if (url.includes('/rpc/admin_decide_photo')) {
+      acted.push({ what: 'photo', id: body.photo_id, approve: body.approve });
+      const gone = photos.find((p) => p.id === body.photo_id);
+      photos = photos.filter((p) => p.id !== body.photo_id);
+      return json({ id: body.photo_id, approved: body.approve, storage_path: gone.storage_path });
+    }
+    if (url.includes('/rpc/admin_reports')) {
+      return json({ filter: 'open', counts: { open: reports.length },
+                    rows: reports.filter((r) => r.status === 'open') });
+    }
+    if (url.includes('/rpc/admin_resolve_report')) {
+      acted.push({ what: 'report', id: body.report_id, action: body.action });
+      reports = reports.map((r) => r.id === body.report_id ? { ...r, status: body.action } : r);
+      return json({ id: body.report_id, status: body.action });
+    }
+    if (url.includes('/rpc/admin_photo_requests')) return json(requests);
+    if (url.includes('/rpc/admin_screen_photo_request')) {
+      acted.push({ what: 'screen', id: body.request_id, allow: body.allow });
+      requests = requests.filter((r) => r.id !== body.request_id);
+      return json(null);
+    }
+    if (url.includes('/rpc/admin_member')) {
+      return json({ user_id: body.target, display_name: 'عمر', age: 33, city: 'نابلس',
+                    status: 'admitted', marital_status: 'never_married',
+                    practice_level: 'practicing', timeline: 'within_1_year',
+                    bio: 'مهندس مدني.', occupation: 'مهندس', children_count: 0,
+                    willing_to_relocate: true, family_aware: true, wali_required: false,
+                    reports_against: 2, matches: 1,
+                    photos: [{ id: 'ph-2', storage_path: 'u-y/2.jpg', ordinal: 0,
+                               is_primary: true, approved: false }],
+                    decisions: [{ action: 'admit', reason_code: 'looks_genuine',
+                                  created_at: new Date().toISOString(), by: 'Owner' }] });
+    }
+    if (url.includes('/rpc/admin_queue')) {
+      return json({ filter: 'waiting', counts: { applying: 3 }, rows: [] });
+    }
+    if (url.includes('/storage/v1/object/sign/')) return json({ signedURL: '/object/x?token=a' });
+    if (url.includes('/rpc/browse_members')) return json({ gated: true, status: 'none', rows: [] });
+    return json({}, 404);
+  });
+
+  // ── stats ──
+  await page.goto(`${base}/#/admin-stats`);
+  await page.waitForTimeout(900);
+  const stats = await page.locator('#app').innerText();
+  check(errors.length === 0, `no page errors across the desk ${errors.join('; ')}`);
+  check(stats.includes('50 ساعة'), 'the longest wait is shown, not an average');
+  check(stats.includes('في الانتظار'), 'with the queue sizes');
+
+  // ── photo approval ──
+  await page.goto(`${base}/#/admin-photos`);
+  await page.waitForTimeout(900);
+  check((await page.locator('#app').innerText()).includes('ليلى'),
+        'the photo queue lists who each photo belongs to');
+  check(await page.locator('.photo-cell img.unveiled').count() >= 1,
+        'and shows the photo unveiled — a reviewer cannot judge a blur');
+
+  await page.locator('[data-photo-decide="yes"]').first().click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'photo' && a.approve === true), 'approving sends the decision');
+  check((await page.locator('#app').innerText()).includes('عمر'),
+        'and the queue moves on to the next photo');
+
+  await page.locator('[data-photo-decide="no"]').first().click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'photo' && a.approve === false), 'rejecting sends it too');
+  check((await page.locator('#app').innerText()).includes('لا صور تنتظر المراجعة'),
+        'and the queue empties');
+
+  // ── reports ──
+  await page.goto(`${base}/#/admin-reports`);
+  await page.waitForTimeout(900);
+  const rep = await page.locator('#app').innerText();
+  check(rep.includes('طلب مالاً'), 'a report is shown by its reason, in Arabic');
+  check(rep.includes('2 بلاغات عليه'), 'with how many reports that person has against them');
+
+  await page.locator('[data-report="actioned"]').click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'report' && a.action === 'actioned'), 'resolving a report is sent');
+
+  // ── photo access screening ──
+  await page.goto(`${base}/#/admin-requests`);
+  await page.waitForTimeout(900);
+  check((await page.locator('#app').innerText()).includes('أودّ التعرّف'),
+        "the requester's note is shown to the screener");
+  await page.locator('[data-screen-request="no"]').click();
+  await page.waitForTimeout(700);
+  check(acted.some((a) => a.what === 'screen' && a.allow === false),
+        'blocking a request is sent, and she is never troubled with it');
+
+  // ── member record ──
+  await page.goto(`${base}/#/admin-reports`);
+  await page.waitForTimeout(800);
+  await page.goto(`${base}/#/admin-photos`);
+  await page.waitForTimeout(600);
+  await page.goto(`${base}/#/admin`);
+  await page.waitForTimeout(800);
+  // The desk reaches a member record through a row's "open" button. The
+  // stubbed application queue is empty here, so the same delegated
+  // handler is exercised through an injected trigger — pinned above the
+  // fixed tab bar, which otherwise swallows the click.
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML('beforeend',
+      '<button id="probe" data-member="u-y" style="position:fixed;top:0;inset-inline-start:0;z-index:9999">open</button>');
+  });
+  await page.locator('#probe').click();
+  await page.waitForTimeout(900);
+  const member = await page.locator('#app').innerText();
+  check(member.includes('عمر'), "a member's record opens");
+  check(member.includes('مهندس'), 'with what they submitted');
+  check(member.includes('سجلّ القرارات'), 'and the decisions made about them');
+  check(member.includes('2 بلاغ'), 'and the reports against them');
+  check(!member.includes('phone'), 'and no phone number');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));

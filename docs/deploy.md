@@ -75,11 +75,27 @@ way past. Check Storage afterwards: if the bucket is not there, the
 migration ran before the storage extension was ready — create a bucket
 named `photos`, leave **Public** off, and run 0010 again.
 
-**Turn off email confirmation** (Authentication → Sign In / Providers →
-Email → "Confirm email"). A new project's built-in mail service is
-heavily rate-limited and its messages routinely never arrive, so leaving
-confirmation on means accounts that can be created and never used. Turn
-it back on once you have configured your own SMTP.
+**Turn off email confirmation** — Authentication → Sign In / Providers →
+Email → **Confirm email**, off. This is not optional housekeeping; leave
+it on and account creation fails in two ways that look like bugs:
+
+* The built-in mail service allows roughly **two messages an hour**. The
+  third account creation returns `over_email_send_rate_limit`, and since
+  the limit is hourly, waiting a minute and trying again does nothing.
+* Worse, adding an email to an existing account returns **200 and changes
+  nothing** — the address is held pending until the link is clicked. The
+  account still has no credential, so submitting the application is then
+  refused for a reason that appears unrelated to what the person just
+  did.
+
+Check it without guessing:
+
+```
+https://<your-ref>.supabase.co/auth/v1/settings?apikey=<anon key>
+```
+
+`"mailer_autoconfirm": true` means confirmation is off and accounts work
+immediately. Turn it back on once you have configured your own SMTP.
 
 **Turn on anonymous sign-ins.** Authentication → Sign In / Providers →
 Anonymous sign-ins. Without it, nobody gets a session, `auth.uid()` is
