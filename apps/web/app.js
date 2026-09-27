@@ -154,6 +154,32 @@ function eighteenYearsAgo() {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Full-screen photo, closed by tapping anywhere or pressing Escape.
+ *
+ * Built and destroyed per use rather than left in the DOM: an element
+ * holding a multi-megabyte data: URL is worth releasing, and a viewer
+ * that is always present is a viewer that can be opened by a stray
+ * click on a screen that has no photo on it.
+ */
+function openLightbox(src, alt = '') {
+  const overlay = h(`
+    <div class="lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(alt || 'صورة')}">
+      <img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">
+      <button class="lightbox-close" aria-label="إغلاق">✕</button>
+    </div>`);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (event) => { if (event.key === 'Escape') close(); };
+
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+}
+
 let toastTimer;
 function toast(message) {
   toastEl.textContent = message;
@@ -1012,9 +1038,19 @@ screens.profile = () => {
       <div class="panel">
         <div class="photo-grid" id="photo-grid">
           ${photos.map((ph) => `
-            <div class="photo-cell" data-path="${escapeAttr(ph.storage_path)}">
+            <div class="photo-cell" data-path="${escapeAttr(ph.storage_path)}"
+                 role="img" aria-label="صورتك${ph.approved ? '' : ' — قيد المراجعة'}">
               <div class="photo-veil">${star(22, 'var(--accent)', 0.4)}</div>
-              <img alt="" data-signed="${escapeAttr(ph.storage_path)}">
+              ${/* Your own photos are shown clearly. The blur is what
+                    everyone ELSE sees, and applying it here too was a
+                    mistake of mine: you cannot tell whether your own
+                    photo is any good through a blur, and checking that is
+                    the only reason to open this screen. */ ''}
+              ${/* alt is empty on purpose: a failed image would otherwise
+                    print its label across the tile, and the cell already
+                    carries the description for a screen reader. */ ''}
+              <img alt="" class="unveiled" data-zoom
+                   data-signed="${escapeAttr(ph.storage_path)}">
               <div class="photo-tags">
                 ${ph.is_primary ? '<span class="photo-tag">الأساسية</span>' : ''}
                 ${ph.approved ? '' : '<span class="photo-tag pending">قيد المراجعة</span>'}
@@ -1029,8 +1065,9 @@ screens.profile = () => {
             </label>` : ''}
         </div>
         <p class="note" style="margin-top:12px">
-          صورك مموّهة لكل من يراها، ولا تُكشف إلا بإذنك لشخص واحد ولمدة محددة.
-          كل صورة تُراجع قبل أن تظهر لأحد. الحد ست صور.
+          تراها أنت كما هي. أمّا غيرك فيراها مموّهة دائماً، ولا تُكشف إلا بإذنك
+          لشخص واحد ولمدة محددة. كل صورة تُراجع قبل أن تظهر لأحد. الحد ست صور.
+          اضغط على الصورة لتكبيرها.
         </p>
         <div id="photo-error"></div>
       </div>
@@ -1588,7 +1625,7 @@ async function loadQueue(filter = state.queueFilter || 'waiting') {
 const adminPhoto = (path, extra = '') => `
   <div class="photo-cell" data-path="${escapeAttr(path)}">
     <div class="photo-veil">${star(22, 'var(--accent)', 0.4)}</div>
-    <img alt="" data-signed="${escapeAttr(path)}" class="unveiled">
+    <img alt="" data-signed="${escapeAttr(path)}" class="unveiled" data-zoom>
     ${extra}
   </div>`;
 
@@ -2338,6 +2375,51 @@ document.addEventListener('visibilitychange', () => {
   render(current());
 });
 
+/**
+ * Keep the open screen current while someone is looking at it.
+ *
+ * Almost everything here changes because of somebody else: a reviewer
+ * approves a photo, the other party replies, an application is admitted.
+ * Without this, the only way to see any of it is to reload — which is
+ * what everyone has been doing.
+ *
+ * Polling rather than a realtime subscription, deliberately. The tables
+ * a member cares about are not readable by the client at all — `photos`
+ * has its grants revoked, and everything arrives through a definer
+ * function — so a change feed would deliver nothing. A request every
+ * twenty seconds, only while the tab is visible, is a rounding error
+ * against what a single photo costs.
+ *
+ * Three things it must not do, which is most of the code below: refetch
+ * while someone is typing, replace a screen out from under a tap, or run
+ * in a background tab.
+ */
+const POLL_MS = 20_000;
+
+setInterval(() => {
+  if (!state.db) return;
+  if (document.visibilityState !== 'visible') return;
+
+  // Typing is the interaction a repaint ruins. The search field keeps its
+  // own focus, but a half-written message or an unsent application is
+  // lost for good.
+  const active = document.activeElement;
+  if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+
+  // The lightbox and the application form both hold state that only
+  // exists on the page.
+  if (document.querySelector('.lightbox') || current() === 'apply') return;
+
+  // Expiring the current screen's keys is enough: render() re-fetches
+  // whatever it finds stale, and repaints only when the answer arrives.
+  for (const key of [...fetched.keys()]) {
+    if (key === current() || key === 'stats' || key.startsWith('thread:')) {
+      fetched.delete(key);
+    }
+  }
+  render(current());
+}, POLL_MS);
+
 const current = () => location.hash.slice(2) || 'welcome';
 
 function go(name, { replace = false } = {}) {
@@ -2780,7 +2862,7 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-member], [data-photo-action], [data-photo-filter], [data-schedule], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-member], [data-photo-action], [data-photo-filter], [data-schedule], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting], img[data-zoom]');
   if (!el) return;
 
   if (el.dataset.loginMode) {
@@ -2826,6 +2908,16 @@ document.addEventListener('click', async (event) => {
   if (el.dataset.tab) return go(el.dataset.tab);
 
   // ── the review desk ──────────────────────────────────────────────────
+  // A photo in a 96-pixel cell cannot be judged, by its owner or by a
+  // reviewer. Tapping opens it full-screen — reusing the image already
+  // loaded, so there is no second request and nothing new to authorise.
+  if (el.matches('img[data-zoom]') || el.closest('img[data-zoom]')) {
+    const img = el.matches('img[data-zoom]') ? el : el.closest('img[data-zoom]');
+    if (!img.getAttribute('src')) return;      // still loading
+    openLightbox(img.src, img.alt);
+    return;
+  }
+
   if (el.dataset.openMatch) {
     state.openMatch = el.dataset.openMatch;
     state.thread = null;

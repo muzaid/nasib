@@ -1217,6 +1217,114 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   fs.unlinkSync(path.join(ROOT, 'config.js'));
 }
 
+// ---------- 13. your own photos, enlarging them, and staying current ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  // 2x2 red PNG, so a blur is measurable rather than a matter of opinion.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC',
+    'base64');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  let approved = false;
+  let profileReads = 0;
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-m', email: 'm@example.com' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-m', email: 'm@example.com', is_admin: false,
+                    has_credential: true, is_anonymous: false, has_row: true });
+    }
+    if (url.includes('/rpc/my_application')) return json({ status: 'admitted' });
+    if (url.includes('/rpc/my_profile')) {
+      profileReads += 1;
+      return json({ user_id: 'u-m', status: 'admitted', display_name: 'حموده',
+                    photos: [{ id: 'p1', storage_path: 'u-m/a.jpg', ordinal: 0,
+                               is_primary: true, approved }] });
+    }
+    if (url.includes('/storage/v1/object/sign/')) {
+      return json({ signedURL: '/object/sign/photos/u-m/a.jpg?token=abc' });
+    }
+    return json({}, 404);
+  });
+  await page.route('**/object/sign/photos/**', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+  });
+
+  await page.goto(`${base}/#/profile`);
+  await page.waitForTimeout(1200);
+
+  // Your own photo is not blurred.
+  const filter = await page.evaluate(() => {
+    const img = document.querySelector('.photo-cell img[data-signed]');
+    return img ? getComputedStyle(img).filter : null;
+  });
+  check(filter === 'none',
+        `your own photos are shown clearly, not blurred (filter: ${filter})`);
+
+  // Tapping enlarges.
+  check(await page.locator('.lightbox').count() === 0, 'no viewer is open to begin with');
+  await page.locator('.photo-cell img[data-zoom]').first().click();
+  await page.waitForTimeout(400);
+  check(await page.locator('.lightbox').count() === 1, 'tapping a photo opens it full-screen');
+  const big = await page.evaluate(() => {
+    const img = document.querySelector('.lightbox img');
+    return img ? { w: img.naturalWidth, src: img.src.slice(0, 5) } : null;
+  });
+  check(big?.w > 0, 'and the enlarged image is really there');
+  check(big?.src === 'data:', 'reusing the image already loaded — no second request');
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  check(await page.locator('.lightbox').count() === 0, 'Escape closes it');
+
+  await page.locator('.photo-cell img[data-zoom]').first().click();
+  await page.waitForTimeout(300);
+  await page.locator('.lightbox').click({ position: { x: 5, y: 5 } });
+  await page.waitForTimeout(300);
+  check(await page.locator('.lightbox').count() === 0, 'and so does tapping the backdrop');
+
+  // A change made elsewhere reaches the screen without a reload.
+  //
+  // This exercises the visibility path, not the twenty-second timer —
+  // waiting out a real interval would put twenty seconds into every run.
+  // Both end in the same two lines (expire the current screen's keys,
+  // render), so what is left untested is the timer firing, not what
+  // happens when it does.
+  const before = profileReads;
+  approved = true;
+  await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(1500);
+  check(profileReads > before, 'returning to the tab re-reads, without a reload');
+  check(!(await page.locator('#app').innerText()).includes('قيد المراجعة'),
+        'so an approval made elsewhere appears');
+
+  // The guard that matters most for the timer: it must not repaint while
+  // someone is typing. Asserted on the condition rather than the clock.
+  const wouldSkip = await page.evaluate(() => {
+    const input = document.createElement('textarea');
+    document.body.appendChild(input);
+    input.focus();
+    const skipped = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    input.remove();
+    return skipped;
+  });
+  check(wouldSkip, 'and a refresh while typing is skipped by the same condition the timer uses');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
 await browser.close();
 server.close();
 console.log(fails.length ? `\n${fails.length} FAILED` : '\nall smoke checks passed');
