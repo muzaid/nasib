@@ -1,0 +1,16 @@
+{
+  "name": "nasib",
+  "private": true,
+  "type": "module",
+  "description": "نصيب — gated-entry marriage app. This manifest exists for the web build; there are no dependencies.",
+  "scripts": {
+    "build": "node tool/build-web.mjs",
+    "test": "node --test apps/web/test/redact.test.mjs apps/web/test/data.test.mjs",
+    "test:browser": "node apps/web/test/browser.mjs",
+    "test:sql": "./supabase/tests/run.sh",
+    "dev": "python3 apps/web/serve.py"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
