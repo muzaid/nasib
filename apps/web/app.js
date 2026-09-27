@@ -99,6 +99,7 @@ const state = {
   queueFilter: 'waiting',
   gate: '',
   isAdmin: false,
+  userId: '',
 };
 
 // --------------------------------------------------------------------- //
@@ -488,10 +489,15 @@ screens.today = () => {
             ${star(30)}
             <h3 class="hd" style="margin-top:18px">لم يُفتح هذا القسم بعد</h3>
             <p class="body" style="color:var(--ink-soft)">
-              حالة طلبك: ${word('status', state.gate)}. نعرض عليك أشخاصاً بعد
-              قبول طلبك، لأن الطرف الآخر مرّ بالمراجعة نفسها.
+              ${state.gate === 'none'
+                ? 'لم تُرسل طلب انضمام بعد. نعرض عليك أشخاصاً بعد قبول طلبك،'
+                  + ' لأن الطرف الآخر مرّ بالمراجعة نفسها.'
+                : `حالة طلبك: ${word('status', state.gate)}. نعرض عليك أشخاصاً بعد`
+                  + ' قبول طلبك، لأن الطرف الآخر مرّ بالمراجعة نفسها.'}
             </p>
-            <button class="btn quiet" style="margin-top:10px" data-go="profile">ملفي</button>
+            <button class="btn quiet" style="margin-top:10px" data-go="${
+              state.gate === 'none' ? 'apply' : 'profile'}">${
+              state.gate === 'none' ? 'ابدأ طلب الانضمام' : 'ملفي'}</button>
           </div>
         </div>
       </div>`;
@@ -757,6 +763,9 @@ const WORDS = {
     within_2_years: 'خلال سنتين', when_right_person: 'عند الشخص المناسب',
   },
   status: {
+    // Not an account_status: browse_members returns it for a visitor with
+    // a session and no application, where no account exists to have one.
+    none: 'لم تُرسل طلباً بعد',
     applying: 'قيد الاستكمال', pending_review: 'قيد المراجعة', admitted: 'مقبول',
     rejected: 'مرفوض', shadow_limited: 'محدود', suspended: 'موقوف',
     banned: 'محظور', paused: 'متوقف مؤقتاً', closed: 'مغلق',
@@ -875,7 +884,9 @@ screens.profile = () => {
         <p class="tiny muted" style="margin:0 0 8px;line-height:1.8">
           هذا ما تحتاجه لتمنح نفسك صلاحية المراجعة، من محرّر SQL في Supabase:
         </p>
-        <code class="code-line" dir="ltr">select grant_admin('${escapeAttr(p.user_id)}');</code>
+        <button class="code-line" dir="ltr" data-copy="select grant_admin('${
+          escapeAttr(p.user_id)}');">select grant_admin('${escapeAttr(p.user_id)}');</button>
+        <p class="tiny muted" style="margin:8px 0 0">اضغط على السطر لنسخه.</p>
       </div>
     </div>
   </div>`;
@@ -927,7 +938,10 @@ function wireProfile() {
 async function loadProfile() {
   if (!state.db) return;
   try {
-    state.profile = await state.db.myProfile();
+    // `my_profile()` answers SQL null for a visitor who has not applied.
+    // Normalised here so no caller has to remember that, and so a falsy
+    // result can never be mistaken for "not fetched yet".
+    state.profile = (await state.db.myProfile()) || { user_id: '' };
   } catch (error) {
     console.warn('[nasib] could not read the profile:', error.message);
     state.profile = { user_id: '' };
@@ -947,6 +961,51 @@ const QUEUE_TABS = [
 
 screens.admin = () => {
   const q = state.queue;
+
+  // Opening this URL without being a reviewer is the common case — it is
+  // how the first reviewer is made. So it is a screen with the one thing
+  // that is needed, not a refusal: the account id, in the statement that
+  // grants it, ready to copy.
+  if (q?.forbidden) {
+    const id = state.userId || '';
+    return `
+    <div class="screen">
+      ${appbar('مكتب المراجعة')}
+      <div class="pad">
+        <div class="panel">
+          <p class="eyebrow">لست مراجعاً</p>
+          <p style="margin:0;font-size:15px;line-height:1.9">
+            هذه الشاشة لمن يراجع الطلبات. لا يوجد اسم مستخدم ولا كلمة مرور —
+            الصلاحية تُمنح لحساب بعينه من قاعدة البيانات، ولا يمكن منحها من
+            داخل التطبيق. هذا مقصود: لو أمكن ذلك لصار للمكتب باب من المتصفح.
+          </p>
+        </div>
+
+        ${id ? `
+          <p class="eyebrow">لتمنح هذا الجهاز الصلاحية</p>
+          <div class="panel tight">
+            <p class="tiny muted" style="margin:0 0 8px;line-height:1.85">
+              انسخ السطر التالي، وشغّله في محرّر SQL في Supabase، ثم أعد تحميل الصفحة.
+            </p>
+            <button class="code-line" dir="ltr" data-copy="select grant_admin('${
+              escapeAttr(id)}');">select grant_admin('${escapeAttr(id)}');</button>
+            <p class="tiny muted" style="margin:8px 0 0">اضغط على السطر لنسخه.</p>
+          </div>
+
+          <div class="panel tinted accent" style="margin-top:14px">
+            <p style="margin:0;font-size:14px;line-height:1.85">
+              هذا المعرّف يخصّ هذا المتصفح وحده. متصفّح آخر أو جهاز آخر له معرّف
+              مختلف، ومسح بيانات الموقع يُنشئ معرّفاً جديداً ويُفقد الصلاحية.
+            </p>
+          </div>` : `
+          <div class="panel">
+            <p style="margin:0;font-size:15px">لا توجد جلسة بعد. أعد تحميل الصفحة.</p>
+          </div>`}
+
+        <button class="btn ghost" style="margin-top:18px" data-go="today">رجوع</button>
+      </div>
+    </div>`;
+  }
 
   return `
   <div class="screen">
@@ -1018,8 +1077,16 @@ async function loadQueue(filter = state.queueFilter || 'waiting') {
   try {
     state.queue = await state.db.adminQueue(filter);
   } catch (error) {
-    state.queue = { rows: [], counts: {} };
-    toast(error.message);
+    // `not an admin` is the ordinary case for anyone opening this URL, not
+    // a failure. It was being shown as an English toast over a desk that
+    // had rendered anyway, which looks like the app is broken rather than
+    // like a door that is shut.
+    if (/not an admin/i.test(error.message)) {
+      state.queue = { forbidden: true, rows: [], counts: {} };
+    } else {
+      state.queue = { rows: [], counts: {} };
+      toast(error.message);
+    }
   }
 }
 
@@ -1067,20 +1134,40 @@ function render(name) {
   // `state` (a skeleton, or the previous read) and again when the data
   // lands. A screen that waits for the network before drawing anything
   // reads as a broken tap on a slow connection.
-  if (name === 'profile' && state.db && !state.profile) {
-    loadProfile().then(() => { if (current() === 'profile') render('profile'); });
-  }
-  // The `!state.queue` guard is load-bearing, not an optimisation: without
-  // it the fetch that follows a render triggers another render, which
-  // fetches again. The screen flickers, the buttons are detached from the
-  // DOM mid-tap, and nothing can be clicked. Every one of these three has
-  // to check that it does not already have its data.
-  if (name === 'admin' && state.db && !state.queue) {
-    loadQueue().then(() => { if (current() === 'admin') render('admin'); });
-  }
-  if (name === 'today' && state.db && !state.members) {
-    loadMembers().then(() => { if (current() === 'today') render('today'); });
-  }
+  if (name === 'profile') fetchOnce('profile', loadProfile);
+  if (name === 'admin') fetchOnce('admin', loadQueue);
+  if (name === 'today') fetchOnce('today', loadMembers);
+}
+
+/**
+ * Fetch for a screen at most once, then repaint it.
+ *
+ * The guard is a record of *having fetched*, not a truthiness test on the
+ * result. That distinction cost a live site: the profile screen guarded
+ * on `!state.profile`, and `my_profile()` returns null for a visitor who
+ * has not applied. Null is falsy, so the guard never closed — every
+ * render started a fetch, every fetch triggered a render, and the screen
+ * sat on "loading…" issuing about five requests a second at the database
+ * for as long as it was open.
+ *
+ * A falsy answer is still an answer. Anything that should be re-read
+ * later says so explicitly, by calling `invalidate`.
+ */
+const fetched = new Set();
+
+function fetchOnce(key, load) {
+  if (!state.db || fetched.has(key)) return;
+  fetched.add(key);
+  load()
+    .catch((error) => console.warn(`[nasib] ${key}:`, error.message))
+    // The key is the screen name, so this also covers the case where the
+    // person navigated away while the request was in flight.
+    .finally(() => { if (current() === key) render(key); });
+}
+
+/** Mark a screen's data stale, so the next visit fetches it again. */
+function invalidate(...keys) {
+  for (const key of keys) fetched.delete(key);
 }
 
 const current = () => location.hash.slice(2) || 'welcome';
@@ -1161,6 +1248,7 @@ function wireApply() {
       // returns the stored status, not the whole form, and re-rendering
       // the screen from the response alone would blank half the fields.
       state.application = { ...application, ...(row || {}) };
+      invalidate('profile', 'today');
       go('camera');
     } catch (error) {
       // The database's own sentence, when it has one — the 18+ refusal is
@@ -1404,8 +1492,28 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy]');
   if (!el) return;
+
+  if (el.dataset.copy) {
+    // A UUID typed by hand is a UUID typed wrong. navigator.clipboard
+    // needs a secure origin and a user gesture — it has both here — but
+    // it still fails on older browsers and when the permission is denied,
+    // so fall back to selecting the text for a manual copy rather than
+    // leaving the tap doing nothing.
+    try {
+      await navigator.clipboard.writeText(el.dataset.copy);
+      toast('نُسخ السطر.');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      toast('حدّدنا السطر — انسخه يدوياً.');
+    }
+    return;
+  }
 
   if (el.dataset.go) return go(el.dataset.go);
   if (el.dataset.tab) return go(el.dataset.tab);
@@ -1414,6 +1522,7 @@ document.addEventListener('click', async (event) => {
   if (el.dataset.queue) {
     state.queue = null;
     state.queueFilter = el.dataset.queue;
+    invalidate('admin');
     return render('admin');                // the skeleton; the router loads
   }
 
@@ -1428,6 +1537,7 @@ document.addEventListener('click', async (event) => {
       // The directory changes when somebody is admitted, so what is
       // cached about it is now wrong.
       state.members = null;
+      invalidate('today');
       await loadQueue();
       return render('admin');
     } catch (error) {
@@ -1519,6 +1629,9 @@ render(location.hash.slice(2) || 'welcome');
     // browser has an application, and whether it is a reviewer.
     const me = await db.whoami();
     state.isAdmin = !!me?.is_admin;
+    // Needed by the review desk's "you are not a reviewer" screen, which
+    // has to print this id whether or not an application exists.
+    state.userId = me?.user_id || '';
 
     if (me?.has_row) {
       state.application = await db.myApplication();

@@ -291,6 +291,121 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   fs.unlinkSync(path.join(ROOT, 'config.js'));
 }
 
+// ---------- 4. the review desk seen by someone who is not a reviewer ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const json = (body, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: '106bdd2d-c487-4c16-8d79-3c66808722ef' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: '106bdd2d-c487-4c16-8d79-3c66808722ef',
+                    is_admin: false, has_row: false });
+    }
+    if (url.includes('/rpc/my_application')) return json(null);
+    // What the live server actually answers for a non-reviewer.
+    if (url.includes('/rpc/admin_queue')) {
+      return json({ code: 'P0001', message: 'not an admin' }, 400);
+    }
+    return json({}, 404);
+  });
+
+  await page.goto(`${base}/#/admin`);
+  await page.waitForTimeout(800);
+
+  const text = await page.locator('#app').innerText();
+  check(errors.length === 0, `no page errors on the closed desk ${errors.join('; ')}`);
+  check(text.includes('لست مراجعاً'), 'a non-reviewer gets an explanation, in Arabic');
+  check(!text.includes('not an admin'), 'and not the raw English error');
+  check(!text.includes('لا أحد هنا'), 'the desk itself is not rendered behind it');
+  check(text.includes("select grant_admin('106bdd2d-c487-4c16-8d79-3c66808722ef');"),
+        'with the real account id in the statement that grants it');
+
+  // The tap-to-copy path. Clipboard permission is granted so writeText resolves.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'],
+                                        { origin: base });
+  await page.locator('[data-copy]').click();
+  await page.waitForTimeout(300);
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  check(copied === "select grant_admin('106bdd2d-c487-4c16-8d79-3c66808722ef');",
+        'tapping the line copies the whole statement');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 5. a falsy answer must not become an infinite fetch loop ----------
+//
+// The live bug: my_profile() answers null for a visitor who has not
+// applied, the router guarded on `!state.profile`, and the guard never
+// closed — render, fetch, render, about five requests a second at the
+// database for as long as the screen was open. Counting requests is the
+// only way to see it; the screen just says "loading…" either way.
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const counts = {};
+  const bump = (url) => {
+    const name = (url.match(/\/rpc\/(\w+)/) || [])[1];
+    if (name) counts[name] = (counts[name] || 0) + 1;
+  };
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    bump(url);
+    const json = (body, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u-new' } });
+    }
+    if (url.includes('/rpc/whoami')) return json({ user_id: 'u-new', is_admin: false, has_row: false });
+    if (url.includes('/rpc/my_application')) return json(null);
+    if (url.includes('/rpc/my_profile')) return json(null);      // ← the trigger
+    if (url.includes('/rpc/browse_members')) return json({ gated: true, status: 'none', rows: [] });
+    return json({}, 404);
+  });
+
+  await page.goto(`${base}/#/profile`);
+  await page.waitForTimeout(2500);
+
+  check((counts.my_profile || 0) === 1,
+        `my_profile fetched exactly once, not in a loop (was ${counts.my_profile || 0})`);
+  const profileText = await page.locator('#app').innerText();
+  check(!profileText.includes('جارٍ التحميل'), 'and the screen leaves the loading state');
+  check(profileText.includes('لم تُرسل طلب انضمام'), 'showing the apply prompt instead');
+
+  // Same shape on the directory, whose gate is also a falsy-ish answer.
+  await page.locator('[data-tab="today"]').click();
+  await page.waitForTimeout(1500);
+  check((counts.browse_members || 0) === 1,
+        `browse_members fetched once too (was ${counts.browse_members || 0})`);
+
+  // Going back and forth must not refetch what is already held.
+  await page.locator('[data-tab="profile"]').click();
+  await page.waitForTimeout(400);
+  await page.locator('[data-tab="today"]').click();
+  await page.waitForTimeout(400);
+  check((counts.my_profile || 0) === 1 && (counts.browse_members || 0) === 1,
+        'and revisiting a screen reuses what was fetched');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
 await browser.close();
 server.close();
 console.log(fails.length ? `\n${fails.length} FAILED` : '\nall smoke checks passed');

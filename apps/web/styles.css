@@ -433,3 +433,11 @@ input[type='tel'] { text-align: right; }
 }
 .chips.scroll-row::-webkit-scrollbar { display: none; }
 .chips.scroll-row .chip { flex: none; }
+
+/* The id line is a button so it can be tapped to copy; it should still
+   read as a code block, not as something that navigates somewhere. */
+button.code-line {
+  width: 100%; cursor: pointer; font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+}
+button.code-line:active { background: var(--teal-soft); }
