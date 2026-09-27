@@ -90,7 +90,7 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     });
     const payload = await readBody(res);
     if (!res.ok) {
-      throw new DataError(authMessage(res.status, payload, res), {
+      throw new DataError(authMessage(res.status, payload), {
         status: res.status,
         code: payload?.error_code || payload?.error || "",
       });
@@ -286,25 +286,6 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
           })));
         }
       } catch { /* the old token still works; it just looks anonymous */ }
-
-      // The part that has to be checked rather than assumed. When the
-      // project requires email confirmation, this request returns 200 and
-      // changes nothing: the address is held as pending until a link is
-      // clicked, so the account still has no credential and the next
-      // thing the person does — submitting their application — is refused
-      // for a reason that has nothing to do with what they just did.
-      //
-      // Better to say it here, where the cause is still on screen.
-      const me = await rpc("whoami", {});
-      if (me && me.has_credential === false) {
-        throw new DataError(
-          "أُرسلت رسالة تأكيد إلى بريدك، ولا يُفعّل الحساب قبل فتح الرابط فيها."
-          + " إن كنت تدير هذا المشروع: أوقف تأكيد البريد من Authentication ‹"
-          + " Sign In / Providers ‹ Email ‹ Confirm email، فالخدمة المدمجة"
-          + " للبريد محدودة برسالتين في الساعة ورسائلها كثيراً ما لا تصل.",
-          { code: "email_confirmation_pending" },
-        );
-      }
       return payload;
     },
 
@@ -336,33 +317,6 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     adminQueue: (filter = "waiting") => rpc("admin_queue", { filter }),
     adminDecide: (userId, action, reason = "reviewed", notes = null) =>
       rpc("admin_decide", { target: userId, action, reason_code: reason, notes }),
-
-    // ── The review desk, the rest of it ───────────────────────────────
-    adminPhotoQueue:   () => rpc("admin_photo_queue", {}),
-    adminDecidePhoto:  (id, approve, reason = null) =>
-      rpc("admin_decide_photo", { photo_id: id, approve, reason }),
-    adminMember:       (userId) => rpc("admin_member", { target: userId }),
-    adminReports:      (filter = "open") => rpc("admin_reports", { filter }),
-    adminResolveReport: (id, action, notes = null) =>
-      rpc("admin_resolve_report", { report_id: id, action, notes }),
-    adminPhotoRequests: () => rpc("admin_photo_requests", {}),
-    adminScreenRequest: (id, allow, reason = null) =>
-      rpc("admin_screen_photo_request", { request_id: id, allow, reason }),
-    adminStats:        () => rpc("admin_stats", {}),
-
-    // ── The member's own screens ──────────────────────────────────────
-    myPhotoRequests: () => rpc("my_photo_requests", {}),
-    myPhotoGrants:   () => rpc("my_photo_grants", {}),
-    myMatches:       () => rpc("my_matches", {}),
-    myMeetings:      () => rpc("my_meetings", {}),
-    matchThread:     (matchId) => rpc("match_thread", { p_match_id: matchId }),
-    sendMessage:     (matchId, body) => rpc("send_message", { p_match_id: matchId, p_body: body }),
-    respondToPhotoRequest: (id, approve) =>
-      rpc("respond_to_photo_request", { request_id: id, approve }),
-    revokePhotoAccess: (grantId, reason = null) =>
-      rpc("revoke_photo_access", { owner_or_viewer_grant: grantId, reason }),
-    requestPhotoAccess: (ownerId, note = null) =>
-      rpc("request_photo_access", { owner: ownerId, note }),
 
     // ── Photos ────────────────────────────────────────────────────────
     myPhotos: () => rpc("my_photos", {}),
@@ -424,24 +378,6 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     },
 
     /**
-     * Remove an object from the bucket.
-     *
-     * Used after a reviewer deletes a photo: the row goes first, so the
-     * photo leaves the product immediately, and the file follows. An
-     * orphaned object in a private bucket nobody can list is a smaller
-     * problem than a row pointing at a file that is gone.
-     */
-    async deleteStorageObject(path) {
-      const s = await signIn();
-      try {
-        await http(`${base}/storage/v1/object/photos/${path}`, {
-          method: "DELETE",
-          headers: { apikey: key, authorization: `Bearer ${s.access_token}` },
-        });
-      } catch { /* see above */ }
-    },
-
-    /**
      * A URL for a private object, valid for `seconds`.
      *
      * The bucket is private, so there is no permanent URL to hold — which
@@ -482,36 +418,8 @@ async function readBody(res) {
 
 // Error text is Arabic because a person reads it. The status code is
 // kept on the error for anyone reading the console.
-function authMessage(status, payload, res) {
+function authMessage(status, payload) {
   const code = payload?.error_code || payload?.error || "";
-  const text = JSON.stringify(payload || {});
-
-  // Two different 429s, and telling someone to wait a minute for the one
-  // that resets hourly is how they sit there pressing the button.
-  //
-  // `over_email_send_rate_limit` is the built-in mail service, capped at
-  // a couple of messages an hour on a new project. It is reached by
-  // creating accounts while "Confirm email" is on — and no amount of
-  // waiting fixes the underlying problem, because the confirmation mail
-  // is not something this app needs at all.
-  if (status === 429 || code === "over_email_send_rate_limit"
-      || code === "over_request_rate_limit") {
-    const emailLimit = /email/i.test(code) || /email rate limit/i.test(text);
-    // GoTrue puts the wait either in a header or inside the sentence.
-    const seconds = Number(res?.headers?.get?.("retry-after"))
-      || Number((text.match(/after (\d+) seconds?/) || [])[1])
-      || 0;
-
-    if (emailLimit) {
-      return "بلغ المشروع حدّ إرسال رسائل التفعيل (رسالتان في الساعة على الخدمة"
-        + " المدمجة). الحل ليس الانتظار: أوقف تأكيد البريد من إعدادات Supabase"
-        + " — Authentication ‹ Sign In / Providers ‹ Email ‹ Confirm email.";
-    }
-    return seconds
-      ? `محاولات كثيرة. حاول بعد ${seconds} ثانية.`
-      : "محاولات كثيرة. الحدّ في Supabase يُحسب بالساعة، لا بالدقيقة — انتظر قبل"
-        + " المحاولة، أو ارفع الحدّ من Authentication ‹ Rate Limits.";
-  }
 
   if (code === "user_already_exists" || code === "email_exists"
       || /already registered|already been registered/i.test(JSON.stringify(payload || {}))) {
@@ -527,6 +435,7 @@ function authMessage(status, payload, res) {
     return "الدخول المجهول غير مفعّل في هذا المشروع.";
   }
   if (code === "invalid_credentials") return "البريد أو كلمة المرور غير صحيحة.";
+  if (status === 429) return "محاولات كثيرة. انتظر دقيقة وحاول مرة أخرى.";
   return payload?.msg || payload?.message || `تعذّر الاتصال بالخادم (${status}${code ? " " + code : ""}).`;
 }
 

@@ -441,12 +441,3 @@ button.code-line {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
 }
 button.code-line:active { background: var(--teal-soft); }
-
-/* Two across: the numbers are glanceable on a phone without a chart. */
-.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.stat-grid .panel { padding: 14px 16px; }
-
-/* A photo a reviewer is judging is shown as it is, not veiled — they
-   cannot approve what they cannot see. Members' photos stay blurred
-   everywhere else, which is what .photo-cell img does by default. */
-.photo-cell img.unveiled { filter: none; transform: none; }
