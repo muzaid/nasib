@@ -21,3 +21,4 @@ begin
   perform set_config('request.jwt.claim.role', 'authenticated', false);
 end;
 $$;
+

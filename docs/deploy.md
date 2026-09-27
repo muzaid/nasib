@@ -16,7 +16,7 @@ Create a project at supabase.com. Any region; the nearest one to your
 users, which for this product is Frankfurt or London rather than a US
 region — the difference is felt on a phone on 3G.
 
-**Run the migrations.** One paste, not eleven:
+**Run the migrations.** One paste, not fourteen:
 
 ```bash
 node tool/bundle-migrations.mjs > setup.sql
@@ -31,6 +31,44 @@ too.
 Do *not* run `supabase/local/00_supabase_stubs.sql` against a hosted
 project — it fakes the `auth` schema for local testing and would
 overwrite the real one.
+
+### "cannot insert multiple commands into a prepared statement"
+
+That error is not about the SQL. Some query consoles — Vercel's database
+tab among them — send whatever you paste as a *prepared statement*, and
+PostgreSQL will not prepare more than one command at a time. Every
+migration is many commands, so nothing you paste there will ever run.
+
+Two ways past it:
+
+**Use Supabase's own SQL editor.** Not Vercel's database tab — the
+Supabase dashboard for the project, left sidebar, SQL Editor. It has no
+such limit. This is the short answer.
+
+**Or apply them over a connection**, which is repeatable and prints which
+migration failed if one does:
+
+```bash
+npm i pg
+node tool/apply-migrations.mjs "$POSTGRES_URL_NON_POOLING"
+```
+
+Use the **non-pooling** URL — port 5432, not 6543. The pooled one runs
+pgbouncer in transaction mode, which hands each statement a different
+backend connection, and a migration is a transaction spanning many
+statements. The script refuses a pooled URL rather than half-applying
+against one.
+
+If it stops partway, resume rather than starting again — these migrations
+are not written to be re-runnable, and `create table` fails on a second
+pass:
+
+```bash
+node tool/apply-migrations.mjs "$POSTGRES_URL_NON_POOLING" --from 0009_web_signup.sql
+```
+
+On a work machine, port 5432 outbound is often blocked. Then it is the
+browser SQL editor, and that is fine — it is the same SQL.
 
 0010 creates the private `photos` storage bucket and its policies on its
 way past. Check Storage afterwards: if the bucket is not there, the
@@ -83,6 +121,27 @@ faster than all three and leaves nothing behind.
 
 ## 1b. Make yourself a reviewer
 
+**With an email and password (what a real reviewer uses).** In Supabase,
+Authentication → Users → **Add user**, with "Auto Confirm User" ticked so
+no confirmation mail is needed. Then, in the SQL editor:
+
+```sql
+select grant_admin_by_email('you@example.com');
+```
+
+Sign in at `/#/login` on the deployed site. That identity is a real
+account: it survives a cleared browser, works on a second device, and can
+be stood down later with `select revoke_admin('you@example.com');` — which
+deactivates the reviewer without deleting the row, because
+`admin_decisions` references it and an audit trail missing the reviewer
+has a hole in the place that matters.
+
+Signing in proves who someone is. It grants nothing: `is_admin` is a row
+only the SQL editor can write, so a correct password on an ungranted
+account gets the same closed desk as anyone else.
+
+**Or tie it to this browser (quicker, for a first look).**
+
 Nothing is admitted without a human, and there is no human until you make
 one. Until then the member side of the app is correctly empty — every
 applicant sits in the queue and the directory has nobody in it.
@@ -92,8 +151,8 @@ both of those are a way into the review desk that exists in the deployed
 system. The only way in is someone with database credentials naming a
 user id.
 
-1. Open the deployed site and go to **ملفي** (the profile tab). At the
-   bottom is your account id, in a line ready to copy.
+1. Open the deployed site and go to **ملفي** (the profile tab), or just
+   open `/#/admin`. Either shows your account id in a line ready to copy.
 2. Paste it into the Supabase SQL editor:
 
 ```sql

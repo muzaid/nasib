@@ -100,6 +100,7 @@ const state = {
   gate: '',
   isAdmin: false,
   userId: '',
+  email: '',
 };
 
 // --------------------------------------------------------------------- //
@@ -949,6 +950,117 @@ async function loadProfile() {
 }
 
 // --------------------------------------------------------------------- //
+// Reviewer sign-in
+// --------------------------------------------------------------------- //
+
+// Only reviewers sign in. Members do not, and the screen says why rather
+// than leaving someone hunting for an account they were never given: in
+// this product a member is identified by a verified phone number, and
+// that step is not built here yet.
+screens.login = () => `
+  <div class="screen">
+    ${appbar('دخول المراجعين')}
+    <div class="pad" id="login-form">
+      <div class="center" style="margin-top:6px">${star(26)}</div>
+      <h3 class="hd" style="text-align:center;margin-top:14px">دخول المراجعين</h3>
+      <p class="body" style="text-align:center;font-size:14.5px;color:var(--ink-soft)">
+        هذه الشاشة لمن يراجع الطلبات، لا للأعضاء.
+      </p>
+
+      <label class="field" style="margin-top:18px">
+        <span>البريد الإلكتروني</span>
+        <input type="email" name="email" dir="ltr" autocomplete="username"
+               inputmode="email" placeholder="you@example.com">
+      </label>
+
+      <label class="field">
+        <span>كلمة المرور</span>
+        <input type="password" name="password" dir="ltr" autocomplete="current-password">
+      </label>
+
+      <div id="login-error"></div>
+      <button class="btn" style="margin-top:6px" id="login-submit">دخول</button>
+
+      <div class="panel tinted accent" style="margin-top:22px">
+        <p class="eyebrow">لماذا لا يوجد دخول للأعضاء</p>
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          العضو في هذا التطبيق يُعرَّف برقم هاتف موثَّق برمز، لا ببريد وكلمة مرور.
+          هذه الخطوة لم تُبنَ في نسخة الويب بعد، ولذلك يبقى الحساب مرتبطاً بهذا
+          المتصفح وحده.
+        </p>
+      </div>
+    </div>
+  </div>`;
+
+function wireLogin() {
+  const form = document.getElementById('login-form');
+  const button = document.getElementById('login-submit');
+  const errorBox = document.getElementById('login-error');
+  if (!form || !button) return;
+
+  const submit = async () => {
+    const email = form.querySelector('[name="email"]').value.trim();
+    const password = form.querySelector('[name="password"]').value;
+
+    if (!email || !password) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">أدخل البريد وكلمة المرور.</div>`;
+      return;
+    }
+    if (!state.db) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">لا يوجد خادم في هذه النسخة.</div>`;
+      return;
+    }
+
+    errorBox.innerHTML = '';
+    button.disabled = true;
+    button.textContent = 'جارٍ الدخول…';
+
+    try {
+      await state.db.signInWithPassword(email, password);
+      const me = await state.db.whoami();
+      state.isAdmin = !!me?.is_admin;
+      state.userId = me?.user_id || '';
+    state.email = me?.email || '';
+      state.email = me?.email || '';
+      // Everything held was read as the previous account.
+      invalidate('profile', 'today', 'admin');
+      state.profile = null;
+      state.queue = null;
+      state.members = null;
+
+      if (!state.isAdmin) {
+        // Signed in, correctly, to an account nobody granted. Saying so
+        // plainly beats dropping them on a desk that refuses them:
+        // authentication and authorisation are separate here on purpose.
+        errorBox.innerHTML = `
+          <div class="banner warn" style="margin-bottom:12px">
+            دخلت بنجاح، لكن هذا الحساب ليس مراجعاً. تُمنح الصلاحية من محرّر SQL:
+            <br><code dir="ltr">select grant_admin_by_email('${escapeAttr(email)}');</code>
+          </div>`;
+        button.disabled = false;
+        button.textContent = 'دخول';
+        return;
+      }
+      go('admin', { replace: true });
+    } catch (error) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">${
+        escapeAttr(error.message)}</div>`;
+      button.disabled = false;
+      button.textContent = 'دخول';
+    }
+  };
+
+  button.addEventListener('click', submit);
+  // Enter in either field submits, which is what a password manager does
+  // after filling them.
+  for (const input of form.querySelectorAll('input')) {
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+  }
+}
+
+// --------------------------------------------------------------------- //
 // The review desk
 // --------------------------------------------------------------------- //
 
@@ -1002,7 +1114,8 @@ screens.admin = () => {
             <p style="margin:0;font-size:15px">لا توجد جلسة بعد. أعد تحميل الصفحة.</p>
           </div>`}
 
-        <button class="btn ghost" style="margin-top:18px" data-go="today">رجوع</button>
+        <button class="btn" style="margin-top:18px" data-go="login">دخول بحساب مراجع</button>
+        <button class="btn ghost" style="margin-top:10px" data-go="today">رجوع</button>
       </div>
     </div>`;
   }
@@ -1048,7 +1161,23 @@ screens.admin = () => {
                 escapeAttr(r.bio)}</p>` : ''}
             </div>
 
-            ${['applying', 'pending_review'].includes(r.status) ? `
+            ${r.id === state.userId ? `
+              <div class="panel tinted accent" style="margin-top:14px">
+                <p class="eyebrow">هذا طلبك أنت</p>
+                <p style="margin:0;font-size:14px;line-height:1.85">
+                  لا يبتّ المراجع في طلبه. لو أمكن ذلك لكان في النظام حساب واحد
+                  على الأقل لم يراجعه أحد — وهو حساب من يملك المراجعة.
+                </p>
+                ${['applying', 'pending_review'].includes(r.status) ? `
+                  <p class="tiny muted" style="margin:12px 0 8px;line-height:1.85">
+                    أثناء التجربة، يمكنك قبول نفسك من محرّر SQL — وهو المكان
+                    الوحيد الذي يملك بيانات الدخول لقاعدة البيانات:
+                  </p>
+                  <button class="code-line" dir="ltr" data-copy="begin; select set_config('nasib.reviewing','on',true); update users set status='admitted', admitted_at=now() where id='${
+                    escapeAttr(r.id)}'; commit;">begin; select set_config('nasib.reviewing','on',true); update users set status='admitted', admitted_at=now() where id='${escapeAttr(r.id)}'; commit;</button>
+                  <p class="tiny muted" style="margin:8px 0 0">اضغط على السطر لنسخه.</p>` : ''}
+              </div>`
+              : ['applying', 'pending_review'].includes(r.status) ? `
               <div class="btn-row" style="margin-top:14px">
                 <button class="btn ghost" data-decide-user="reject" data-id="${escapeAttr(r.id)}">رفض</button>
                 <button class="btn wide" data-decide-user="admit" data-id="${escapeAttr(r.id)}">قبول</button>
@@ -1059,6 +1188,17 @@ screens.admin = () => {
                         data-decide-user="shadow_limit" data-id="${escapeAttr(r.id)}">تحديد الظهور</button>
               </div>` : ''}
           </div>`).join('')}
+
+      ${state.email ? `
+        <div class="panel tight" style="margin-top:18px">
+          <div class="line-item" style="align-items:center">
+            <div style="flex:1;min-width:0">
+              <div class="tiny muted">تراجع بحساب</div>
+              <div dir="ltr" style="font-size:14.5px;text-align:right">${escapeAttr(state.email)}</div>
+            </div>
+            <button class="btn quiet" style="width:auto" data-signout>خروج</button>
+          </div>
+        </div>` : ''}
 
       <div class="panel tinted accent" style="margin-top:18px">
         <p class="eyebrow">ما يُسجَّل</p>
@@ -1129,6 +1269,7 @@ function render(name) {
   if (name === 'camera') wireCamera();
   if (name === 'chat') wireChat();
   if (name === 'profile') wireProfile();
+  if (name === 'login') wireLogin();
 
   // Screens that need a round trip paint twice: once from whatever is in
   // `state` (a skeleton, or the previous read) and again when the data
@@ -1492,8 +1633,22 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout]');
   if (!el) return;
+
+  if (el.hasAttribute('data-signout')) {
+    await state.db?.signOut();
+    // Everything in hand was read as the reviewer. Dropping it here
+    // rather than on the next render stops a signed-out screen showing
+    // the queue it was holding.
+    Object.assign(state, {
+      isAdmin: false, email: '', userId: '',
+      profile: null, queue: null, members: null, application: null,
+    });
+    invalidate('profile', 'today', 'admin');
+    toast('خرجت من حساب المراجعة.');
+    return go('welcome', { replace: true });
+  }
 
   if (el.dataset.copy) {
     // A UUID typed by hand is a UUID typed wrong. navigator.clipboard
@@ -1632,6 +1787,7 @@ render(location.hash.slice(2) || 'welcome');
     // Needed by the review desk's "you are not a reviewer" screen, which
     // has to print this id whether or not an application exists.
     state.userId = me?.user_id || '';
+    state.email = me?.email || '';
 
     if (me?.has_row) {
       state.application = await db.myApplication();

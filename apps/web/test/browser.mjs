@@ -166,6 +166,8 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   const people = {
     'u-laila': { status: 'applying', display_name: 'ليلى', gender: 'female', age: 29, city: 'رام الله' },
     'u-omar':  { status: 'applying', display_name: 'عمر',  gender: 'male',   age: 33, city: 'نابلس' },
+    // The reviewer's own application, which is in the queue like anyone's.
+    'u-boss':  { status: 'applying', display_name: 'المالك', gender: 'male', age: 40, city: 'رام الله' },
   };
   const decisions = [];
   let photos = [];
@@ -181,7 +183,7 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
       return json({ access_token: 't', refresh_token: 'r',
                     expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u-boss' } });
     }
-    if (url.includes('/rpc/whoami'))  return json({ user_id: 'u-boss', is_admin: true, has_row: false });
+    if (url.includes('/rpc/whoami'))  return json({ user_id: 'u-boss', is_admin: true, has_row: true });
     if (url.includes('/rpc/my_application')) return json(null);
     if (url.includes('/rpc/my_profile')) {
       return json({ user_id: 'u-boss', status: 'admitted', display_name: 'المالك',
@@ -242,6 +244,10 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
 
   const deskText = await page.locator('#app').innerText();
   check(deskText.includes('ليلى') && deskText.includes('عمر'), 'both applicants are listed');
+  check(await page.locator('[data-decide-user][data-id="u-boss"]').count() === 0,
+        'the reviewer is offered no decision on their own row');
+  check(deskText.includes('هذا طلبك أنت'),
+        'it says why, instead of letting the server refuse in English');
 
   // Admit one, reject the other.
   await page.locator('[data-decide-user="admit"][data-id="u-laila"]').click();
@@ -252,8 +258,11 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   await page.locator('[data-decide-user="reject"][data-id="u-omar"]').click();
   await page.waitForTimeout(400);
   check(decisions.some((d) => d.target === 'u-omar' && d.action === 'reject'), 'so does rejecting');
-  check((await page.locator('#app').innerText()).includes('لا أحد هنا'),
-        'the waiting queue empties as decisions are made');
+  const remaining = await page.locator('#app').innerText();
+  check(!remaining.includes('ليلى') && !remaining.includes('عمر'),
+        'decided applicants leave the waiting queue');
+  check(remaining.includes('المالك'),
+        "and the reviewer's own undecidable application is what is left");
 
   await page.locator('[data-queue="admitted"]').click();
   await page.waitForTimeout(400);
@@ -401,6 +410,122 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   await page.waitForTimeout(400);
   check((counts.my_profile || 0) === 1 && (counts.browse_members || 0) === 1,
         'and revisiting a screen reuses what was fetched');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 6. reviewer sign-in ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  // Two accounts with correct passwords: one granted, one not. The
+  // difference between them is the whole point — signing in proves who
+  // you are and grants nothing.
+  const accounts = {
+    'boss@nasib.app':   { password: 'right-one', id: 'u-boss',   admin: true },
+    'nobody@nasib.app': { password: 'right-one', id: 'u-nobody', admin: false },
+  };
+  let signedIn = null;
+  let loggedOut = false;
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('grant_type=password')) {
+      const account = accounts[body.email];
+      if (!account || account.password !== body.password) {
+        return json({ error_code: 'invalid_credentials', msg: 'Invalid login credentials' }, 400);
+      }
+      signedIn = body.email;
+      return json({ access_token: 't-' + account.id, refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: account.id, email: body.email } });
+    }
+    if (url.includes('/auth/v1/logout')) {
+      // The real GoTrue revokes the token, so whoami stops recognising
+      // the account. Forgetting that here made the stub claim the
+      // reviewer was still signed in after signing out.
+      loggedOut = true;
+      signedIn = null;
+      return json({});
+    }
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't-anon', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u-anon' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      const account = signedIn ? accounts[signedIn] : null;
+      return json(account
+        ? { user_id: account.id, email: signedIn, is_anonymous: false,
+            is_admin: account.admin, has_row: false }
+        : { user_id: 'u-anon', email: null, is_anonymous: true, is_admin: false, has_row: false });
+    }
+    if (url.includes('/rpc/my_application')) return json(null);
+    if (url.includes('/rpc/my_profile')) return json(null);
+    if (url.includes('/rpc/admin_queue')) {
+      const account = signedIn ? accounts[signedIn] : null;
+      return account?.admin
+        ? json({ filter: 'waiting', counts: {}, rows: [] })
+        : json({ code: 'P0001', message: 'not an admin' }, 400);
+    }
+    if (url.includes('/rpc/browse_members')) return json({ gated: true, status: 'none', rows: [] });
+    return json({}, 404);
+  });
+
+  await page.goto(`${base}/#/login`);
+  await page.waitForTimeout(600);
+  check(errors.length === 0, `no page errors on the login screen ${errors.join('; ')}`);
+  check((await page.locator('#app').innerText()).includes('لماذا لا يوجد دخول للأعضاء'),
+        'the login screen explains why members do not sign in');
+
+  // Wrong password.
+  await page.locator('[name="email"]').fill('boss@nasib.app');
+  await page.locator('[name="password"]').fill('wrong');
+  await page.locator('#login-submit').click();
+  await page.waitForTimeout(400);
+  check((await page.locator('#login-error').innerText()).includes('غير صحيحة'),
+        'a wrong password is refused, in Arabic');
+  check(!page.url().includes('admin'), 'and goes nowhere');
+
+  // Right password, but the account was never granted.
+  await page.locator('[name="password"]').fill('right-one');
+  await page.locator('[name="email"]').fill('nobody@nasib.app');
+  await page.locator('#login-submit').click();
+  await page.waitForTimeout(500);
+  const notGranted = await page.locator('#login-error').innerText();
+  check(notGranted.includes('ليس مراجعاً'),
+        'a correct password on an ungranted account signs in but reviews nothing');
+  check(notGranted.includes('grant_admin_by_email'),
+        'and names the command that would grant it');
+  check(!page.url().includes('admin'), 'it does not drop them on a desk that refuses them');
+
+  // Right password on the granted account.
+  await page.locator('[name="email"]').fill('boss@nasib.app');
+  await page.locator('[name="password"]').fill('right-one');
+  await page.locator('#login-submit').click();
+  await page.waitForTimeout(700);
+  check(page.url().includes('admin'), 'a granted reviewer lands on the desk');
+  const desk = await page.locator('#app').innerText();
+  check(desk.includes('boss@nasib.app'), 'which shows the account doing the reviewing');
+
+  // Signing out.
+  await page.locator('[data-signout]').click();
+  await page.waitForTimeout(700);
+  check(loggedOut, 'signing out revokes the token server-side too');
+  await page.goto(`${base}/#/admin`);
+  await page.waitForTimeout(800);
+  const after = await page.locator('#app').innerText();
+  check(after.includes('لست مراجعاً'), 'and the desk is closed again afterwards');
+  check(!after.includes('boss@nasib.app'), 'with no trace of the account that left');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));

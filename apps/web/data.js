@@ -204,6 +204,45 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     /** Who this browser is, and whether it is a reviewer. */
     whoami: () => rpc("whoami", {}),
 
+    /**
+     * Sign in as a reviewer, with an email and a password.
+     *
+     * This replaces whatever session the browser held — which for an
+     * ordinary visitor is their anonymous one. That is the intended
+     * trade: a reviewer's identity has to survive a cleared browser and
+     * work on a second device, and an anonymous session does neither.
+     *
+     * Signing in proves who you are. It grants nothing: `is_admin` is a
+     * row in admin_users that only the SQL editor can write. An account
+     * with a perfect password and no row gets the same closed desk as
+     * everyone else.
+     */
+    async signInWithPassword(email, password) {
+      const payload = await authCall("token?grant_type=password", {
+        email: String(email || "").trim(),
+        password: String(password || ""),
+      });
+      writeSession(stamp(payload));
+      return session;
+    },
+
+    /** Sign out, dropping back to a fresh anonymous session on next use. */
+    async signOut() {
+      const held = session;
+      writeSession(null);
+      if (held?.access_token) {
+        try {
+          await http(`${base}/auth/v1/logout`, {
+            method: "POST",
+            headers: { apikey: key, authorization: `Bearer ${held.access_token}` },
+          });
+        } catch {
+          // The token is already forgotten locally, which is what the
+          // person asked for. Revoking it server-side is housekeeping.
+        }
+      }
+    },
+
     /** The whole profile, for the edit screen to prefill from. */
     myProfile: () => rpc("my_profile", {}),
 
@@ -318,6 +357,12 @@ async function readBody(res) {
 // kept on the error for anyone reading the console.
 function authMessage(status, payload) {
   const code = payload?.error_code || payload?.error || "";
+  if (code === "invalid_credentials" || status === 400) {
+    return "البريد أو كلمة المرور غير صحيحة.";
+  }
+  if (code === "email_not_confirmed") {
+    return "لم يُفعّل هذا البريد بعد. أكّده من لوحة Supabase أو من رسالة التفعيل.";
+  }
   if (status === 422 && /anonymous/i.test(JSON.stringify(payload || {}))) {
     return "الدخول المجهول غير مفعّل في هذا المشروع.";
   }
