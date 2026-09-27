@@ -1,0 +1,67 @@
+name: nasib
+description: A gated-entry marriage platform for Arabic-speaking users.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  # 3.6+ for Color.withValues, used throughout the theme.
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # ---- the camera step ----------------------------------------------- #
+  # These two are what make the guided capture real rather than a mock: the
+  # camera streams frames, and ML Kit turns each frame into a head pose, an
+  # eye-open probability and a smile probability — which is exactly what the
+  # challenge steps are written against. Both run on the device; neither
+  # computes a face embedding, because recognising *who* this is belongs on
+  # the server where the answer cannot be patched out.
+  # The camera plugin asks for the runtime permission itself, so there is
+  # no permission_handler here — one fewer plugin in the build.
+  camera: ^0.11.0
+  google_mlkit_face_detection: ^0.13.0
+
+  http: ^1.2.2
+
+  # ---- backend --------------------------------------------------------- #
+  # Row-level security is the authorisation layer, so the client talks to
+  # Postgres directly. Only lib/core/api.dart uses this.
+  supabase_flutter: ^2.8.0
+
+  # Left out of this build on purpose, and each has a reason to come back:
+  #   intl                — date formatting; leave it out until something
+  #                         needs it, because flutter_localizations pins an
+  #                         exact intl and a stale caret here fails pub get
+  #   image_picker        — photo upload, once the storage buckets exist
+  #   device_info_plus    — device integrity, once Play Integrity is wired
+  #   purchases_flutter   — in-app purchase; needs a RevenueCat project
+  #   flutter_riverpod    — when there is real state to hold
+  # Adding a dependency that nothing imports only makes the build slower
+  # and the first compile more likely to fail.
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # One family, four weights, shipped with the app rather than fetched.
+    # Cairo is the most widely used Arabic UI face for a reason: open
+    # counters, even stroke weight, and it stays legible at 13px, which is
+    # where a form label and a caption live. A display serif looked
+    # handsome and cost clarity. Licence in assets/fonts/OFL.txt.
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700

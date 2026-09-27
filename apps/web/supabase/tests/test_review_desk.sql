@@ -1,0 +1,335 @@
+-- ---------------------------------------------------------------------
+-- The review desk, the directory, and photos.
+--
+-- The assertions that matter are the ones about who can do what. An admin
+-- function that works is easy; an admin function that a member cannot
+-- reach, and that an admin cannot point at their own account, is the
+-- thing worth pinning down.
+-- ---------------------------------------------------------------------
+
+\set ON_ERROR_STOP on
+\echo == review desk ==
+
+\set boss  '''c0000000-0000-0000-0000-00000000000c'''
+\set her   '''d0000000-0000-0000-0000-00000000000d'''
+\set him   '''e0000000-0000-0000-0000-00000000000e'''
+
+insert into auth.users (id) values (:boss), (:her), (:him) on conflict do nothing;
+
+-- Two applicants arrive through the web path, as a real one would.
+select act_as(:her);
+select apply_for_membership(jsonb_build_object(
+  'gender', 'female', 'date_of_birth', '1997-02-20', 'city', 'رام الله',
+  'display_name', 'ليلى', 'timeline', 'within_1_year'));
+
+select act_as(:him);
+select apply_for_membership(jsonb_build_object(
+  'gender', 'male', 'date_of_birth', '1993-08-02', 'city', 'رام الله',
+  'display_name', 'عمر', 'timeline', 'within_6_months'));
+
+-- ── before anyone is an admin ─────────────────────────────────────────
+select assert((whoami() ->> 'is_admin')::boolean = false,
+  'an ordinary applicant is not an admin');
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform admin_queue('waiting');
+  exception when others then failed := true; end;
+  perform assert(failed, 'a member cannot open the queue');
+end $$;
+
+do $$
+declare failed boolean := false;
+begin
+  begin
+    perform admin_decide('d0000000-0000-0000-0000-00000000000d'::uuid, 'admit');
+  exception when others then failed := true; end;
+  perform assert(failed, 'and cannot admit anybody');
+end $$;
+
+-- The self-admission attempt, which is the one a patched client tries.
+do $$
+declare failed boolean := false;
+begin
+  begin
+    perform admin_decide('e0000000-0000-0000-0000-00000000000e'::uuid, 'admit');
+  exception when others then failed := true; end;
+  perform assert(failed, 'including itself');
+end $$;
+
+select assert((select status from users where id = :him) = 'applying',
+  'nothing moved');
+
+-- ── grant_admin is not reachable from a client ────────────────────────
+-- The test session is a superuser, so the function's own check passes
+-- here; what is asserted is that the privilege was revoked, which is what
+-- actually stops a browser.
+select assert(
+  not has_function_privilege('authenticated', 'grant_admin(uuid,text,text)', 'execute')
+  and not has_function_privilege('anon', 'grant_admin(uuid,text,text)', 'execute'),
+  'grant_admin cannot be executed by a client role');
+
+select assert(
+  has_function_privilege('authenticated', 'admin_queue(text,int)', 'execute'),
+  'admin_queue is callable by any signed-in role — the gate is is_admin(), not the grant');
+
+-- The standing version of the audit that found the bug above. A
+-- `security definer` function runs with its owner's privileges, so one
+-- that neither checks is_admin() nor reads auth.uid() decides nothing for
+-- itself — whatever it is handed, it does. None of those may be reachable
+-- by an unauthenticated caller.
+--
+-- Add such a function and this fails, naming it. That is the point: the
+-- next one will be added by someone who has not read 0011.
+do $$
+declare
+  leaky text;
+begin
+  select string_agg(p.proname, ', ' order by p.proname) into leaky
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.prosecdef
+     and has_function_privilege('anon', p.oid, 'execute')
+     and p.prosrc !~* 'is_admin|auth\.uid|not signed in|service_role'
+     -- Three deliberate exceptions, each for a stated reason. This list is
+     -- short on purpose: adding a name to it is the moment to ask whether
+     -- the function should be reachable at all.
+     --
+     --   open_slots        takes a city and a day count. No caller
+     --                     identity in it to widen, and an applicant needs
+     --                     it before being admitted.
+     --   can_view_profile  named by the profiles_read policy, and a policy
+     --                     is checked against the querying role.
+     --   has_photo_access  called in the body of the photo_gallery view,
+     --                     which is checked the same way.
+     --
+     -- The last two are why 0011 grants them back; revoking either fails
+     -- every profile read or every gallery read outright.
+     and p.proname not in ('open_slots', 'can_view_profile', 'has_photo_access')
+     -- `t_` is the test harness's own wrapper prefix (00_helpers.sql). It
+     -- exists only in a test database; no migration creates one.
+     and p.proname not like 't\\_%';
+
+  perform assert(leaky is null,
+    coalesce('definer functions reachable by anon with no guard: ' || leaky,
+             'no definer function is reachable by anon without a guard'));
+end $$;
+
+-- ── the first admin ───────────────────────────────────────────────────
+select grant_admin(:boss, 'owner@nasib.app', 'Owner');
+
+select act_as(:boss);
+select assert((whoami() ->> 'is_admin')::boolean, 'the granted user is an admin');
+
+-- ── the queue ─────────────────────────────────────────────────────────
+select assert(
+  jsonb_array_length(admin_queue('waiting') -> 'rows') >= 2,
+  'both applicants are waiting in the queue');
+
+select assert(
+  (select count(*) from jsonb_array_elements(admin_queue('waiting') -> 'rows') r
+    where r ->> 'display_name' = 'ليلى') = 1,
+  'an applicant appears once, by name');
+
+select assert(
+  (select (r ->> 'age')::int from jsonb_array_elements(admin_queue('waiting') -> 'rows') r
+    where r ->> 'display_name' = 'عمر') between 32 and 34,
+  'the age is computed, not stored — a birthday must not need a migration');
+
+select assert(
+  not (admin_queue('waiting') -> 'rows' -> 0 ? 'phone_e164'),
+  'the phone number is not in a list a reviewer scrolls past');
+
+select assert(
+  (admin_queue('waiting') -> 'counts') ? 'applying',
+  'the counts come back with the queue, so the screen needs one call');
+
+select assert(
+  (select count(*) from admin_access_log
+    where admin_id = :boss and route like 'queue:%') >= 5,
+  'every queue read is logged, not only every profile opened');
+
+-- ── deciding ──────────────────────────────────────────────────────────
+select assert(
+  (admin_decide(:her, 'admit', 'looks_genuine') ->> 'status') = 'admitted',
+  'an applicant can be admitted');
+
+select assert(
+  (select admitted_at is not null from users where id = :her),
+  'and the admission is timestamped');
+
+select assert(
+  (select count(*) from admin_decisions
+    where subject_user_id = :her and action = 'admit'
+      and admin_id = :boss and reason_code = 'looks_genuine') = 1,
+  'the decision is recorded against the admin who made it');
+
+do $$
+declare failed boolean := false;
+begin
+  begin perform admin_decide('c0000000-0000-0000-0000-00000000000c'::uuid, 'admit');
+  exception when others then failed := true; end;
+  perform assert(failed, 'an admin cannot decide their own application');
+end $$;
+
+select assert(
+  (admin_decide(:him, 'admit', 'looks_genuine') ->> 'status') = 'admitted',
+  'the second applicant too');
+
+-- Re-admitting is idempotent in the one way that matters: the original
+-- admission time is kept, so "member since" does not move.
+select assert(
+  (select admitted_at from users where id = :her)
+  = (select admitted_at from users where id = :her),
+  'admitted_at is not overwritten on a later decision');
+
+-- ── the directory ─────────────────────────────────────────────────────
+select act_as(:her);
+select assert(
+  (browse_members() ->> 'gated')::boolean = false,
+  'an admitted member is not gated');
+
+select assert(
+  (select count(*) from jsonb_array_elements(browse_members() -> 'rows') r
+    where r ->> 'display_name' = 'عمر') = 1,
+  'she sees him');
+
+select assert(
+  (select count(*) from jsonb_array_elements(browse_members() -> 'rows') r
+    where r ->> 'display_name' = 'ليلى') = 0,
+  'and not herself');
+
+select assert(
+  (select count(*) from jsonb_array_elements(browse_members() -> 'rows') r
+    where (r ->> 'photos_unlocked')::boolean) = 0,
+  'nobody arrives with photos already unlocked');
+
+select assert(
+  not (browse_members() -> 'rows' -> 0 ? 'storage_path'),
+  'the directory carries no photo paths at all — access is granted, not listed');
+
+-- Someone still waiting sees nothing, which is the whole point of the gate.
+insert into auth.users (id) values ('f0000000-0000-0000-0000-00000000000f') on conflict do nothing;
+select act_as('f0000000-0000-0000-0000-00000000000f');
+select apply_for_membership(jsonb_build_object(
+  'gender', 'male', 'date_of_birth', '1990-01-01', 'display_name', 'منتظر'));
+
+select assert(
+  (browse_members() ->> 'gated')::boolean,
+  'an applicant who has not been admitted is gated');
+
+select assert(
+  jsonb_array_length(browse_members() -> 'rows') = 0,
+  'and sees nobody');
+
+-- Signed in with no application at all. This said "not signed in" to
+-- someone who was signed in, which told them to do the thing they had
+-- just done.
+insert into auth.users (id) values ('09000000-0000-0000-0000-000000000009')
+  on conflict do nothing;
+select act_as('09000000-0000-0000-0000-000000000009');
+
+select assert(
+  (browse_members() ->> 'status') = 'none'
+  and (browse_members() ->> 'gated')::boolean,
+  'a visitor who has not applied is gated, not told they are signed out');
+
+select set_config('request.jwt.claim.sub', '', false);
+do $$
+declare failed boolean := false;
+begin
+  begin perform browse_members();
+  exception when others then failed := true; end;
+  perform assert(failed, 'but no session at all is still an error');
+end $$;
+
+-- ── photos ────────────────────────────────────────────────────────────
+select act_as(:her);
+
+select assert(
+  (add_photo('d0000000-0000-0000-0000-00000000000d/one.jpg') ? 'id'),
+  'a photo under your own prefix is registered');
+
+select assert(
+  (select is_primary from photos where storage_path like '%one.jpg'),
+  'the first photo becomes the primary one without being asked');
+
+select assert(
+  (select approved = false from photos where storage_path like '%one.jpg'),
+  'and is not approved — nothing a client calls sets that');
+
+-- The attack this function exists to stop.
+do $$
+declare failed boolean := false;
+begin
+  begin
+    perform add_photo('e0000000-0000-0000-0000-00000000000e/stolen.jpg');
+  exception when others then failed := true; end;
+  perform assert(failed, 'you cannot register a file under somebody else''s prefix');
+end $$;
+
+select assert(
+  (select count(*) from photos where user_id = :her) = 1,
+  'and nothing was written when it was refused');
+
+select assert(jsonb_array_length(my_photos()) = 1, 'my_photos returns your own');
+
+select add_photo('d0000000-0000-0000-0000-00000000000d/two.jpg', true);
+select assert(
+  (select count(*) from photos where user_id = :her and is_primary) = 1,
+  'exactly one photo is primary after a second is made primary');
+
+-- Fill to the limit first, outside any exception block. A plpgsql
+-- BEGIN/EXCEPTION is an implicit subtransaction: raising inside one rolls
+-- back everything the block did, so adding four photos and failing on the
+-- fifth inside a single block leaves none of the four behind — which
+-- makes the count assertion below measure the rollback, not the limit.
+do $$
+begin
+  for i in 3..6 loop
+    perform add_photo('d0000000-0000-0000-0000-00000000000d/p' || i || '.jpg');
+  end loop;
+end $$;
+
+do $$
+declare failed boolean := false;
+begin
+  begin
+    perform add_photo('d0000000-0000-0000-0000-00000000000d/seventh.jpg');
+  exception when others then failed := true; end;
+  perform assert(failed, 'the sixth photo is the last one');
+end $$;
+
+select assert(
+  (select count(*) from photos where user_id = :her) = 6,
+  'and the limit is exact, not approximate');
+
+select assert(
+  (delete_photo((select id from photos where storage_path like '%two.jpg'))
+    ->> 'storage_path') like '%two.jpg',
+  'deleting a photo returns the path, so the caller can remove the object too');
+
+-- ── my_profile ────────────────────────────────────────────────────────
+select assert(
+  (my_profile() ->> 'display_name') = 'ليلى'
+  and (my_profile() ->> 'status') = 'admitted',
+  'my_profile reads back what the edit screen needs to prefill');
+
+select assert(
+  jsonb_array_length(my_profile() -> 'photos') = 5,
+  'including the photos, after one was deleted');
+
+-- Editing after admission does not re-open the decision.
+select apply_for_membership(jsonb_build_object(
+  'gender', 'female', 'date_of_birth', '1997-02-20',
+  'display_name', 'ليلى', 'city', 'البيرة', 'bio', 'أعمل في التمريض.'));
+
+select assert(
+  (my_profile() ->> 'status') = 'admitted'
+  and (my_profile() ->> 'city') = 'البيرة'
+  and (my_profile() ->> 'bio') = 'أعمل في التمريض.',
+  'an admitted member can edit their profile without losing admission');
+
+\echo == review desk: done ==

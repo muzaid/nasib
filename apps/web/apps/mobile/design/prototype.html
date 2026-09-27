@@ -1,0 +1,992 @@
+<title>نصيب — نموذج التطبيق</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap">
+
+<style>
+:root {
+  /* White page, white panels, and a hairline to separate them. Contrast is
+     the whole point of this palette: the previous cream reads warm but it
+     costs about a third of the ink-to-ground contrast, and Arabic loses
+     more from that than Latin does. */
+  --page:       #F6F9FB;
+  --panel:      #FFFFFF;
+  --panel-2:    #EFF4F8;
+  --line:       #DDE5EB;
+
+  --ink:        #0F2033;   /* deep navy — 14:1 on white */
+  --ink-soft:   #44586B;
+  --muted:      #7C8FA0;
+
+  --teal:       #0E7C7B;   /* the one action colour */
+  --teal-deep:  #0A5F5E;
+  --teal-soft:  #E2F1F1;
+
+  /* A second, darker navy for the ornament and section marks. Two colours
+     only: one for ink and structure, one for anything you can press. */
+  --accent:     #14527A;
+  --accent-soft:#E6EFF6;
+
+  --verified:   #0F7A57;
+  --caution:    #A85C00;
+  --danger:     #B3261E;
+
+  --shell:      #E8EEF3;
+  --shell-ink:  #5E7183;
+
+  /* Tokens rather than overrides. A colour whose only definition sits
+     behind a :root[data-theme] selector applies in the un-stamped state
+     too, which is how a page ends up rendering one theme's ink on the
+     other theme's ground. */
+  --veil-a:     #DCE6ED;
+  --veil-b:     #C2D2DE;
+  --veil-on-a:  #AFC1D0;
+  --veil-on-b:  #91A6B8;
+  --on-teal:    #FFFFFF;
+
+  --ar: "Cairo", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --display: "Cairo", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page:       #0C141B;
+    --panel:      #121C25;
+    --panel-2:    #18242F;
+    --line:       #24323E;
+    --ink:        #E8F0F6;
+    --ink-soft:   #A7B8C6;
+    --muted:      #78899A;
+    --teal:       #4FD1C5;
+    --teal-deep:  #6FE0D5;
+    --teal-soft:  #10292B;
+    --accent:     #7FB2DC;
+    --accent-soft:#132532;
+    --verified:   #5FC79B;
+    --caution:    #D99A4E;
+    --danger:     #E68B84;
+    --shell:      #070C11;
+    --shell-ink:  #7A8B9B;
+    --veil-a: #1E2C37; --veil-b: #17232C;
+    --veil-on-a: #33485A; --veil-on-b: #263846;
+    --on-teal: #06211F;
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: #0C141B; --panel: #121C25; --panel-2: #18242F; --line: #24323E;
+  --ink: #E8F0F6; --ink-soft: #A7B8C6; --muted: #78899A;
+  --teal: #4FD1C5; --teal-deep: #6FE0D5; --teal-soft: #10292B;
+  --accent: #7FB2DC; --accent-soft: #132532;
+  --verified: #5FC79B; --caution: #D99A4E; --danger: #E68B84;
+  --shell: #070C11; --shell-ink: #7A8B9B;
+  --veil-a: #1E2C37; --veil-b: #17232C;
+  --veil-on-a: #33485A; --veil-on-b: #263846;
+  --on-teal: #06211F;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--shell);
+  color: var(--ink);
+  font-family: var(--ar);
+  direction: rtl;
+  text-align: right;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------- page frame ---------------- */
+
+.page { padding: 28px 16px 56px; max-width: 1180px; margin: 0 auto; }
+
+.masthead { text-align: center; margin-bottom: 26px; }
+.masthead h1 {
+  font-family: var(--display);
+  font-size: 38px; font-weight: 700; margin: 0; letter-spacing: -.01em;
+  color: var(--ink); line-height: 1.4;
+}
+.masthead p { margin: 4px 0 0; color: var(--shell-ink); font-size: 14.5px; }
+
+/* the screen picker */
+.tabs {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin: 22px auto 26px; max-width: 900px;
+}
+.tab {
+  font: inherit; font-size: 14px; font-weight: 600;
+  padding: 8px 15px; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--shell-ink);
+  border: 1px solid transparent;
+}
+.tab:hover { color: var(--ink); border-color: var(--line); }
+.tab[aria-selected="true"] {
+  background: var(--panel); color: var(--ink); border-color: var(--line);
+}
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stage { display: flex; justify-content: center; }
+
+/* the device */
+.device {
+  width: 390px; max-width: 100%;
+  border-radius: 46px;
+  background: var(--panel);
+  border: 10px solid #1B2836;
+  box-shadow: 0 30px 70px rgba(0,0,0,.28), 0 2px 0 rgba(255,255,255,.04) inset;
+  overflow: hidden;
+  position: relative;
+}
+:root[data-theme="dark"] .device,
+:root:not([data-theme="light"]) .device { border-color: #223140; }
+
+.notch {
+  position: absolute; top: 9px; inset-inline: 0; margin: auto;
+  width: 108px; height: 24px; border-radius: 999px;
+  background: #1B2836; z-index: 5;
+}
+:root[data-theme="dark"] .notch,
+:root:not([data-theme="light"]) .notch { background: #223140; }
+
+.viewport {
+  height: 780px; overflow-y: auto; overflow-x: hidden;
+  background: var(--page);
+  scrollbar-width: thin;
+}
+.viewport::-webkit-scrollbar { width: 0; }
+
+.statusbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 22px 2px; font-size: 12px; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .right { display: flex; gap: 5px; align-items: center; }
+
+.screen { display: none; padding: 0 0 34px; min-height: 100%; }
+.screen[data-active="true"] { display: block; }
+
+.pad { padding-inline: 26px; }
+
+/* ---------------- shared pieces ---------------- */
+
+.appbar {
+  display: grid; grid-template-columns: 30px 1fr auto; align-items: center;
+  gap: 10px; padding: 10px 18px 14px;
+}
+.appbar h2 { margin: 0; font-size: 17.5px; font-weight: 700; text-align: center; }
+.appbar .icon { color: var(--ink); opacity: .75; }
+.appbar .side { font-size: 13px; color: var(--ink-soft); white-space: nowrap; }
+
+.progress { height: 3px; background: var(--line); margin: 0 18px 20px; border-radius: 2px; }
+.progress i { display: block; height: 100%; background: var(--teal); border-radius: 2px; }
+
+h3.hd { font-size: 25px; font-weight: 700; margin: 0 0 6px; line-height: 1.45; }
+p.sub { margin: 0 0 22px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.8; }
+p.body { font-size: 16.5px; line-height: 1.95; margin: 0 0 16px; }
+p.note { font-size: 14px; line-height: 1.8; color: var(--ink-soft); margin: 10px 0 0; }
+
+.eyebrow {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
+  color: var(--ink-soft); margin: 0 0 10px;
+}
+.eyebrow::before { content: ""; width: 14px; height: 2px; background: var(--teal); flex: none; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(15,32,51,.05);
+}
+.panel + .panel { margin-top: 14px; }
+.panel.tinted { background: var(--teal-soft); }
+.panel.accent { border-inline-start: 3px solid var(--teal); }
+.panel.accent-alt { border-inline-start: 3px solid var(--accent); }
+.panel.flat { box-shadow: none; }
+
+.rule { height: 1px; background: var(--line); border: 0; margin: 14px 0; }
+
+.ornament { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 22px 0; }
+.ornament .bar { height: 1px; width: 46px; background: var(--accent-soft); }
+
+.btn {
+  display: block; width: 100%; font: inherit; font-size: 16px; font-weight: 600;
+  padding: 16px; border-radius: 14px; border: 0; cursor: pointer;
+  background: var(--teal); color: var(--on-teal);
+}
+.btn.ghost { background: transparent; color: var(--ink); border: 1.2px solid var(--line); }
+.btn.quiet { background: transparent; color: var(--teal); border: 0; font-size: 14.5px; padding: 10px; }
+.btn.danger { background: transparent; color: var(--danger); border: 1.2px solid var(--danger); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { flex: 1; }
+.btn-row .btn.wide { flex: 2; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel);
+  font-size: 14.5px; font-weight: 500; cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--teal-soft); border-color: var(--teal); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px 5px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+}
+.badge.id { color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.badge.photo { color: var(--teal); background: color-mix(in srgb, var(--teal-soft) 70%, transparent); border: 1px solid color-mix(in srgb, var(--teal) 28%, transparent); }
+
+.fact { display: inline-flex; padding: 7px 13px; border-radius: 999px;
+        border: 1px solid var(--line); background: var(--panel); font-size: 14px; font-weight: 500; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.kv { display: flex; gap: 12px; padding: 9px 0; }
+.kv dt { width: 100px; flex: none; color: var(--ink-soft); font-size: 14px; }
+.kv dd { margin: 0; font-size: 15.5px; font-weight: 600; }
+
+.line-item { display: flex; gap: 13px; align-items: flex-start; padding: 14px 0; }
+.line-item + .line-item { border-top: 1px solid var(--line); }
+.line-item svg { flex: none; margin-top: 2px; }
+.line-item span { font-size: 16px; line-height: 1.85; }
+
+/* veiled photos — a decision, not a failed load */
+.veil-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.veil-row::-webkit-scrollbar { display: none; }
+.veil {
+  width: 150px; height: 196px; flex: none;
+  border-radius: 18px; border: 1px solid var(--line);
+  background: linear-gradient(215deg, var(--veil-a), var(--veil-b));
+  display: grid; place-items: center; position: relative; overflow: hidden;
+}
+.veil.revealed { background: linear-gradient(215deg, var(--veil-on-a), var(--veil-on-b)); }
+.veil .wm {
+  position: absolute; bottom: 8px; inset-inline-end: 10px;
+  font-size: 10px; font-weight: 600; color: rgba(255,255,255,.72);
+  direction: ltr;
+}
+
+/* chat */
+.thread { display: flex; flex-direction: column; gap: 10px; }
+.bubble {
+  max-width: 78%; padding: 11px 15px; border-radius: 16px;
+  font-size: 16px; line-height: 1.8;
+}
+.bubble.them { background: var(--panel); border: 1px solid var(--line); align-self: flex-end; }
+.bubble.me { background: var(--teal); color: var(--on-teal); align-self: flex-start; }
+.bubble small { display: block; margin-top: 5px; font-size: 11px; opacity: .8; }
+
+.banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 13px 15px; border-radius: 14px; font-size: 14.5px; line-height: 1.8;
+}
+.banner.info { background: var(--teal-soft); color: var(--ink); }
+.banner.warn { background: color-mix(in srgb, var(--caution) 12%, transparent); color: var(--caution); }
+
+.composer {
+  display: flex; gap: 9px; align-items: center;
+  padding: 12px 18px 4px;
+}
+.composer .box {
+  flex: 1; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 13px 15px; color: var(--muted); font-size: 14.5px;
+}
+.composer .send {
+  width: 46px; height: 46px; border-radius: 14px; border: 0;
+  background: var(--teal); color: var(--on-teal); cursor: pointer;
+  display: grid; place-items: center;
+}
+
+.grant {
+  display: flex; align-items: center; gap: 12px; padding: 14px 0;
+}
+.grant + .grant { border-top: 1px solid var(--line); }
+.grant .who { flex: 1; min-width: 0; }
+.grant .who b { font-size: 16px; font-weight: 600; }
+.grant .who span { display: block; font-size: 13.5px; color: var(--ink-soft); }
+.grant button {
+  font: inherit; font-size: 14.5px; font-weight: 600; color: var(--danger);
+  background: transparent; border: 0; cursor: pointer; padding: 6px 4px;
+}
+
+.slot { display: flex; gap: 12px; align-items: center; padding: 13px 15px;
+        border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
+        margin-bottom: 8px; }
+
+.stepdot { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+.stepdot .mark { width: 20px; flex: none; display: grid; place-items: center; }
+
+/* ---------------- guided camera capture ---------------- */
+
+/* The ring is the viewfinder. It is deliberately not a rectangle: a face
+   held at the right distance fills a circle unambiguously, where a frame
+   invites the user to centre the phone instead of their face. */
+.ring {
+  width: 188px; height: 188px; margin: 0 auto; border-radius: 50%;
+  display: grid; place-items: center; position: relative;
+  background: var(--panel-2); border: 1.5px solid var(--line);
+}
+.ring.live { border: 3px solid var(--teal); background: var(--teal-soft); }
+.ring .pulse {
+  position: absolute; inset: -9px; border-radius: 50%;
+  border: 1.5px solid var(--teal); opacity: .34;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe { 50% { transform: scale(1.045); opacity: .12; } }
+
+/* Dots, not a progress bar. A bar asks to be watched, and the one thing
+   this screen needs is for the user to keep looking at the lens. */
+.dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 4px; }
+.dots i { width: 8px; height: 8px; border-radius: 999px; background: var(--line); }
+.dots i.done { background: var(--teal); }
+.dots i.now { width: 22px; background: var(--teal); }
+
+/* Left-to-right even inside an RTL screen: Arabic-Indic numerals are still
+   read in that order, and bidi would otherwise hand the user the digits
+   backwards — which is a spoken challenge the honest user then fails. */
+.digits {
+  direction: ltr; unicode-bidi: isolate;
+  font-size: 34px; font-weight: 700; color: var(--teal);
+  letter-spacing: 9px; text-align: center; margin: 14px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict { display: flex; gap: 12px; padding: 15px 0; align-items: flex-start; }
+.verdict .mark { flex: none; width: 22px; display: grid; place-items: center; }
+
+.notes {
+  max-width: 420px; margin: 22px auto 0; color: var(--shell-ink);
+  font-size: 13.5px; line-height: 1.85; text-align: center;
+}
+
+.themetoggle {
+  position: fixed; top: 14px; inset-inline-start: 14px; z-index: 30;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  background: var(--panel); color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 7px 14px; cursor: pointer;
+}
+
+@media (max-width: 460px) {
+  .page { padding: 18px 12px 40px; }
+  .device { border-width: 0; border-radius: 0; box-shadow: none; width: 100%; }
+  .notch { display: none; }
+  .viewport { height: auto; min-height: 70vh; }
+  .masthead h1 { font-size: 32px; }
+  .themetoggle { inset-inline-start: 8px; top: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<button class="themetoggle" id="themebtn" type="button">الوضع الداكن</button>
+
+<div class="page">
+  <header class="masthead">
+    <h1>نصيب</h1>
+    <p>نموذج تفاعلي لواجهة التطبيق — اضغط على أي شاشة</p>
+  </header>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="شاشات التطبيق"></nav>
+
+  <div class="stage">
+    <div class="device">
+      <div class="notch" aria-hidden="true"></div>
+      <div class="viewport" id="viewport">
+        <div class="statusbar">
+          <span>٩:٤١</span>
+          <span class="right">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor" aria-hidden="true"><rect x="0" y="7" width="3" height="4" rx=".6"/><rect x="4.3" y="5" width="3" height="6" rx=".6"/><rect x="8.6" y="2.6" width="3" height="8.4" rx=".6"/><rect x="12.9" y="0" width="3" height="11" rx=".6" opacity=".35"/></svg>
+            <svg width="22" height="11" viewBox="0 0 22 11" fill="none" aria-hidden="true"><rect x=".5" y=".5" width="18" height="10" rx="3" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="13" height="7" rx="1.8" fill="currentColor"/><path d="M20.4 4v3c.9-.3.9-2.7 0-3Z" fill="currentColor" opacity=".45"/></svg>
+          </span>
+        </div>
+        <div id="screens"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="notes" id="screennote"></p>
+</div>
+
+<script>
+/* The eight-point star: two overlaid squares, which is how the motif is
+   actually constructed in Levantine tile rather than a star drawn point by
+   point. Used three times in the whole app — any more and it is wallpaper. */
+function star(size, color, opacity) {
+  const r = size / 2, pts = [];
+  for (let i = 0; i < 16; i++) {
+    const rad = i % 2 === 0 ? r : r * 0.54;
+    const a = (Math.PI / 8) * i - Math.PI / 2;
+    pts.push(`${(r + Math.cos(a) * rad).toFixed(2)},${(r + Math.sin(a) * rad).toFixed(2)}`);
+  }
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" aria-hidden="true"
+     style="opacity:${opacity ?? 1}"><polygon points="${pts.join(' ')}" stroke="${color}"
+     stroke-width="${(size * 0.055).toFixed(2)}" stroke-linejoin="round" fill="none"/></svg>`;
+}
+
+const ornament = () =>
+  `<div class="ornament"><span class="bar"></span>${star(13, 'var(--teal)')}<span class="bar"></span></div>`;
+
+const ico = {
+  face: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/></svg>',
+  check: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  blur: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6"><circle cx="12" cy="12" r="9" stroke-dasharray="2 3"/><circle cx="12" cy="12" r="3.5"/></svg>',
+  room: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 .8-1l8-1.6A1 1 0 0 1 14 3.4V21M14 21h6V9h-6M4 21h16"/><circle cx="11" cy="12" r=".9" fill="var(--teal)" stroke="none"/></svg>',
+  family: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.6"/><circle cx="17" cy="9" r="2.1"/><path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5M15 19c0-2.2 1.3-4 3-4s3 1.8 3 4"/></svg>',
+  back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  shield: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-2.9 8.3-7 10-4.1-1.7-7-5.6-7-10V6l7-3Z"/></svg>',
+  send: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12 4 5l2.5 7L4 19l16-7Z"/></svg>',
+  clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  done: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--verified)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>',
+  pending: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.6"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></svg>',
+  id: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><circle cx="8.5" cy="11" r="2.1"/><path d="M5 16.4c.6-1.4 2-2.2 3.5-2.2s2.9.8 3.5 2.2M15 10h4M15 13.5h4"/></svg>',
+  notyou: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.9-5.2 6.5-5.2 1 0 2 .2 2.8.5M16 15.5l5 5M21 15.5l-5 5"/></svg>',
+  badge: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M14.5 10h4M14.5 14h2.5M4 20 20 4"/></svg>',
+  retake: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--caution)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>',
+  mic: '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>',
+  face_big: '<svg width="66" height="66" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.3" stroke-linecap="round"><path d="M5 9V6.5A1.5 1.5 0 0 1 6.5 5H9M15 5h2.5A1.5 1.5 0 0 1 19 6.5V9M19 15v2.5a1.5 1.5 0 0 1-1.5 1.5H15M9 19H6.5A1.5 1.5 0 0 1 5 17.5V15"/><circle cx="12" cy="11.4" r="4.4"/><path d="M8.4 17c.9-1.1 2.1-1.7 3.6-1.7s2.7.6 3.6 1.7"/></svg>',
+  eye: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+};
+
+const appbar = (title, side) => `
+  <div class="appbar">
+    <span class="icon">${ico.back}</span>
+    <h2>${title}</h2>
+    <span class="side">${side ?? ''}</span>
+  </div>`;
+
+// ------------------------------------------------------------------ //
+
+const SCREENS = [
+  {
+    id: 'welcome',
+    tab: 'الترحيب',
+    note: 'أول جملة تقول إن التسجيل طلب انضمام ولا يُقبل الجميع. هذه الجملة وحدها تصفّي المرور العابر قبل أن يكلّف شيئاً.',
+    html: `
+      <div class="screen pad" style="padding-top:26px">
+        <div style="display:grid;place-items:center;margin-bottom:22px">${star(30, 'var(--teal)')}</div>
+        <h1 style="font-family:var(--display);font-size:44px;font-weight:700;text-align:center;margin:0;line-height:1.4;letter-spacing:-.01em">نصيب</h1>
+        <p style="text-align:center;margin:6px 0 0;font-size:18px;font-weight:500;color:var(--ink-soft)">للزواج، لا لغيره.</p>
+        ${ornament()}
+        <p class="body" style="text-align:center">كل من تقابله هنا مرّ بتحقق من هويته ومراجعة بشرية. التسجيل طلب انضمام، ولا نقبل الجميع.</p>
+        <div class="panel" style="padding:6px 18px;margin-top:22px">
+          <div class="line-item">${ico.face}<span>صورة حيّة تثبت أن الشخص حقيقي</span></div>
+          <div class="line-item">${ico.check}<span>مراجعة بشرية لكل ملف</span></div>
+          <div class="line-item">${ico.blur}<span>صورك مموّهة دائماً، ولا تُكشف إلا بموافقتك</span></div>
+          <div class="line-item">${ico.room}<span>اللقاء الأول في مكتبنا، بحضور موظّف</span></div>
+          <div class="line-item">${ico.family}<span>وضع الوليّ، إن أردت</span></div>
+        </div>
+        <button class="btn" style="margin-top:26px">ابدأ طلب الانضمام</button>
+        <p class="note" style="text-align:center">يستغرق من 8 إلى 12 دقيقة</p>
+      </div>`,
+  },
+
+  {
+    id: 'apply',
+    tab: 'الطلب',
+    note: 'الترتيب مقصود: الإشارات الرخيصة أولاً، والصورة الحيّة أخيراً — بعد أن يكون المتقدّم قد استثمر ما يكفي لإتمامها.',
+    html: `
+      <div class="screen">
+        ${appbar('3 من 7')}
+        <div class="progress"><i style="width:43%"></i></div>
+        <div class="pad">
+          <h3 class="hd">جاهزيتك للزواج</h3>
+          <p class="sub">الإطار الزمني والسكن</p>
+
+          <p class="eyebrow">متى تودّ الزواج</p>
+          <div class="chips">
+            <button class="chip" aria-pressed="false">خلال 6 شهور</button>
+            <button class="chip" aria-pressed="true">خلال سنة</button>
+            <button class="chip" aria-pressed="false">خلال سنتين</button>
+            <button class="chip" aria-pressed="false">عند الشخص المناسب</button>
+          </div>
+
+          <div style="height:22px"></div>
+          <p class="eyebrow">أين تودّ السكن بعد الزواج</p>
+          <div class="chips">
+            <button class="chip" aria-pressed="true">بيت مستقل</button>
+            <button class="chip" aria-pressed="false">مع العائلة</button>
+            <button class="chip" aria-pressed="false">لم أقرر</button>
+          </div>
+
+          <div style="height:22px"></div>
+          <p class="eyebrow">هل عائلتك على علم</p>
+          <div class="chips">
+            <button class="chip" aria-pressed="true">نعم</button>
+            <button class="chip" aria-pressed="false">ليس بعد</button>
+          </div>
+
+          <div class="panel tinted accent" style="margin-top:26px">
+            <p style="margin:0;font-size:14px;line-height:1.8">
+              هذه الحقول هي ما يسأل عنه الأهل أولاً، ونطابق عليها مطابقة صارمة —
+              لا نعرض عليك من لا يتّفق معك فيها.
+            </p>
+          </div>
+
+          <button class="btn" style="margin-top:24px">متابعة</button>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'camera',
+    tab: 'الكاميرا',
+    note: 'تعليمة واحدة كبيرة في كل مرة. قائمة من خمس خطوات تُقرأ مقدّماً هي قائمة لا يتبعها أحد — والترتيب يأتي من الخادم ويختلف في كل محاولة، لأن الفيديو المسجّل مسبقاً لا يستطيع تنفيذ أمر صُوّر قبله.',
+    html: `
+      <div class="screen">
+        ${appbar('التحقق بالكاميرا', '٩٠ ثانية')}
+        <div class="pad">
+          <div class="dots">
+            <i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i>
+          </div>
+
+          <div style="height:20px"></div>
+          <div class="ring live"><span class="pulse"></span>${ico.face_big}</div>
+
+          <div style="height:26px"></div>
+          <div style="display:grid;place-items:center">${ico.mic}</div>
+          <h3 class="hd" style="text-align:center;font-size:25px;margin-top:12px">اقرأ الأرقام بصوت مسموع</h3>
+          <p class="digits">٤٧١٩</p>
+
+          <div style="display:grid;place-items:center;margin-top:6px">
+            <button class="btn quiet" style="width:auto;padding:8px 16px;font-size:14px">لا أستطيع التحدّث الآن</button>
+          </div>
+
+          <p class="note" style="text-align:center;margin-top:18px">
+            أمسك الهاتف ثابتاً على مستوى عينيك
+          </p>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'camera-result',
+    tab: 'نتيجة الكاميرا',
+    note: 'ثلاث نتائج مختلفة، ولكل واحدة جملة تخصّها: «صورك ليست لك» و«هويتك ليست لك» مشكلتان لهما حلّان مختلفان، وإعطاء الجملة الخاطئة يضيّع يوماً على الطرفين. لا نسبة، ولا كلمة «فشل».',
+    html: `
+      <div class="screen pad" style="padding-top:30px">
+        <div style="display:grid;place-items:center">
+          <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="var(--verified)"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="m8.2 12.2 2.6 2.6 5-5.6"/>
+          </svg>
+        </div>
+        <h3 class="hd" style="text-align:center;margin-top:16px">تمّ التطابق</h3>
+        <p class="body" style="text-align:center;color:var(--ink-soft);font-size:14.5px">
+          الوجه الذي أمام الكاميرا يطابق صورك، ويطابق صورة هويتك.
+        </p>
+
+        <div class="panel" style="margin-top:20px;padding:6px 18px">
+          <div class="line-item">${ico.face}<span>الوجه الحيّ ↔ صورك</span><span style="margin-inline-start:auto">${ico.done}</span></div>
+          <hr class="rule" style="margin:0">
+          <div class="line-item">${ico.id}<span>الوجه الحيّ ↔ صورة الهوية</span><span style="margin-inline-start:auto">${ico.done}</span></div>
+          <hr class="rule" style="margin:0">
+          <div class="line-item">${ico.check}<span>الحركة طبيعية، لا صورة مطبوعة ولا شاشة</span><span style="margin-inline-start:auto">${ico.done}</span></div>
+        </div>
+
+        <p class="eyebrow" style="margin-top:26px">وإن لم تتطابق</p>
+        <div class="panel tinted">
+          <div class="verdict">
+            <span class="mark">${ico.notyou}</span>
+            <div>
+              <p style="margin:0;font-size:15px;font-weight:600">الصور ليست لك</p>
+              <p style="margin:3px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-soft)">
+                الوجه أمام الكاميرا لا يطابق الصور التي رفعتها. ارفع صورك أنت، أو اعترض.
+              </p>
+            </div>
+          </div>
+          <hr class="rule" style="margin:0">
+          <div class="verdict">
+            <span class="mark">${ico.badge}</span>
+            <div>
+              <p style="margin:0;font-size:15px;font-weight:600">الهوية ليست لك</p>
+              <p style="margin:3px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-soft)">
+                الوجه أمام الكاميرا لا يطابق صورة الهوية. هذه حالة يراجعها شخص من فريقنا.
+              </p>
+            </div>
+          </div>
+          <hr class="rule" style="margin:0">
+          <div class="verdict">
+            <span class="mark">${ico.retake}</span>
+            <div>
+              <p style="margin:0;font-size:15px;font-weight:600">لم تتضح الصورة</p>
+              <p style="margin:3px 0 0;font-size:13.5px;line-height:1.8;color:var(--ink-soft)">
+                جرّب في مكان أوضح، وأبعد الهاتف قليلاً. أعِد المحاولة متى شئت.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn" style="margin-top:22px">متابعة</button>
+      </div>`,
+  },
+
+  {
+    id: 'review',
+    tab: 'المراجعة',
+    note: 'الصمت هو ما يجعل التطبيق المغلق يبدو معطّلاً. الشاشة تقول دائماً: هناك شخص يراجع، وكم يستغرق، وماذا بعد.',
+    html: `
+      <div class="screen pad" style="padding-top:34px">
+        <div style="display:grid;place-items:center">${star(28, 'var(--teal)')}</div>
+        <h3 class="hd" style="text-align:center;margin-top:20px">طلبك قيد المراجعة</h3>
+        <p class="body" style="text-align:center;color:var(--ink-soft);font-size:14.5px">
+          شخص من فريقنا يراجع طلبك الآن. عادةً بضع ساعات، ولا تتجاوز 12 ساعة.
+        </p>
+
+        <div class="panel" style="margin-top:24px;padding:8px 18px">
+          <div class="stepdot"><span class="mark">${ico.done}</span><span style="font-size:15px">تم استلام طلبك</span></div>
+          <hr class="rule" style="margin:0">
+          <div class="stepdot"><span class="mark">${ico.done}</span><span style="font-size:15px">تم التحقق من الصورة الحيّة</span></div>
+          <hr class="rule" style="margin:0">
+          <div class="stepdot"><span class="mark">${ico.pending}</span><span style="font-size:15px;color:var(--ink-soft)">مراجعة بشرية</span></div>
+        </div>
+
+        <div class="panel accent-alt" style="margin-top:16px">
+          <p class="eyebrow">لماذا هذه المراجعة؟</p>
+          <p style="margin:0;font-size:14.5px;line-height:1.85">
+            لأن كل ملف هنا يمرّ بالمراجعة نفسها. هذا هو السبب الذي يجعل من تقابله حقيقياً.
+          </p>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'candidate',
+    tab: 'اليوم',
+    note: 'خمسة إلى ثمانية أشخاص في اليوم، كل واحد ملف كامل يُقبل أو يُرفض بقرار. لا تمرير سريع، ولا عدّاد إعجابات.',
+    html: `
+      <div class="screen">
+        ${appbar('اليوم', '٤ متبقّون')}
+        <div class="pad">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="flex:1;min-width:0">
+              <h3 class="hd" style="margin:0">يوسف، 32</h3>
+              <p class="sub" style="margin:2px 0 0">عمّان · مهندس مدني</p>
+            </div>
+            <span class="badge id">${star(12, 'var(--accent)')} هوية موثّقة</span>
+          </div>
+
+          <div style="height:18px"></div>
+          <div class="veil-row">
+            <div class="veil">${star(34, 'var(--accent)', .42)}</div>
+            <div class="veil">${star(34, 'var(--accent)', .42)}</div>
+            <div class="veil">${star(34, 'var(--accent)', .42)}</div>
+          </div>
+
+          <button class="btn ghost" style="margin-top:14px">
+            <span style="display:inline-flex;gap:8px;align-items:center;justify-content:center">${ico.eye} طلب رؤية الصور</span>
+          </button>
+          <p class="note">كل الصور على هذا التطبيق تُعرض مموّهة. لا يوجد إعداد يجعل صورتك مكشوفة للجميع — لا الآن ولا لاحقاً.</p>
+          <div class="banner info" style="margin-top:12px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" style="flex:none;margin-top:3px"><path d="M12 3l7 3v5c0 4.4-2.9 8.3-7 10-4.1-1.7-7-5.6-7-10V6l7-3Z"/></svg>
+            <span>لقطات الشاشة محجوبة على هذه الشاشة، ونُشعر صاحب الصور بأي محاولة.</span>
+          </div>
+
+          <div style="height:26px"></div>
+          <p class="eyebrow">جاهزيته للزواج</p>
+          <div class="facts">
+            <span class="fact">يريد الزواج خلال سنة</span>
+            <span class="fact">أعزب</span>
+            <span class="fact">العائلة على علم</span>
+            <span class="fact">مستعد للانتقال</span>
+          </div>
+
+          <div style="height:26px"></div>
+          <p class="eyebrow">بكلماته</p>
+          <div class="panel flat">
+            <p style="margin:0;font-size:15px;line-height:1.95">
+              مهندس مدني في عمّان من خمس سنين، وأصل عيلتي من الخليل. عيلتي عارفة إني بدوّر،
+              وبفكّر بالزواج خلال السنة الجاية. بحب التاريخ وبلعب كرة كل جمعة.
+            </p>
+          </div>
+
+          <div style="height:22px"></div>
+          <p class="eyebrow">أين تتفقان وأين تختلفان</p>
+          <div class="panel flat" style="padding:6px 18px">
+            <div class="line-item">${ico.done}<span>السكن بعد الزواج: بيت مستقل</span></div>
+            <div class="line-item">${ico.done}<span>الإنجاب: خلال سنتين</span></div>
+            <div class="line-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--caution)" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12h7"/></svg>
+              <span>المدينة: هو في عمّان وأنت في رام الله</span>
+            </div>
+          </div>
+
+          <div style="height:22px"></div>
+          <div class="btn-row">
+            <button class="btn ghost">لا، شكراً</button>
+            <button class="btn wide">مهتمة</button>
+          </div>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'inbox',
+    tab: 'طلب صور',
+    note: 'الطلب وصلها بعد أن راجعته الإدارة. الرفض لا يحتاج سبباً، ولا يُبلَّغ صاحب الطلب بأي تفصيل.',
+    html: `
+      <div class="screen">
+        ${appbar('طلبات رؤية صورك')}
+        <div class="pad">
+          <div class="panel">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:17px;font-weight:600">يوسف، 32</div>
+                <div style="font-size:13px;color:var(--muted);margin-top:2px">عمّان · يطلب رؤية صورك</div>
+              </div>
+              <span class="badge id">${star(12, 'var(--accent)')} هوية موثّقة</span>
+            </div>
+
+            <div class="panel flat" style="background:var(--page);margin-top:14px;padding:14px 15px">
+              <p style="margin:0;font-size:15px;line-height:1.9">أهلاً، أنا وعيلتي من الخليل وحابب أتعرف عليكم.</p>
+            </div>
+
+            <hr class="rule">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              ${ico.shield}
+              <p style="margin:0;font-size:13.5px;line-height:1.75;color:var(--ink-soft)">راجعت الإدارة هذا الطلب قبل أن يصلك.</p>
+            </div>
+
+            <div class="btn-row" style="margin-top:18px">
+              <button class="btn ghost">لا أسمح</button>
+              <button class="btn wide">أسمح برؤية صوري</button>
+            </div>
+            <p class="note">قرارك لا يُبلَّغ له بأي تفصيل. لا داعي لتبرير الرفض.</p>
+          </div>
+
+          <div class="panel tinted accent" style="margin-top:16px">
+            <p class="eyebrow">إن سمحتِ</p>
+            <p style="margin:0;font-size:14.5px;line-height:1.85">
+              يرى صورك لمدة 14 يوماً فقط. كل صورة تحمل علامة تعريف باسمه، فإن تسرّبت عُرف مصدرها.
+              ويمكنك سحب الإذن في أي لحظة دون سبب.
+            </p>
+          </div>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'grants',
+    tab: 'من يرى صوري',
+    note: 'السحب بضغطة واحدة، بلا نافذة تسأل «لماذا؟». طلب تبرير لسحب الموافقة يلغي معنى طلبها أصلاً.',
+    html: `
+      <div class="screen">
+        ${appbar('من يرى صوري')}
+        <div class="pad">
+          <div class="panel" style="padding:4px 18px">
+            <div class="grant">
+              <div class="who"><b>يوسف، 32</b><span>شاهدها 3 مرات · يتبقى 11 يوماً</span></div>
+              <button type="button">سحب الإذن</button>
+            </div>
+            <div class="grant">
+              <div class="who"><b>سامر، 34</b><span>لم يشاهدها بعد · يتبقى 6 أيام</span></div>
+              <button type="button">سحب الإذن</button>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top:14px;border-inline-start:3px solid var(--danger)">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="1.7" stroke-linecap="round" style="flex:none;margin-top:3px"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:16px;color:var(--danger)">التقط أحدهم لقطة لصورك</div>
+                <div style="font-size:14px;color:var(--ink-soft);margin-top:2px">
+                  خالد، 30 · أمس 9:14 مساءً · المحاولة الأولى
+                </div>
+                <p style="margin:10px 0 0;font-size:14.5px;line-height:1.8">
+                  أُبلغ بأننا رصدنا المحاولة وبأن صورك تحمل علامة تعريف باسمه.
+                  عند المحاولة الثانية يُسحب إذنه تلقائياً دون انتظار قرارك.
+                </p>
+                <button class="btn danger" style="margin-top:12px">سحب إذنه الآن</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel accent-alt" style="margin-top:14px">
+            <p class="eyebrow">ما الذي نمنعه فعلاً</p>
+            <p style="margin:0;font-size:14.5px;line-height:1.85">
+              على أندرويد: التقاط الشاشة وتسجيلها محجوبان تماماً على شاشات الصور والمحادثة.
+            </p>
+            <hr class="rule">
+            <p style="margin:0;font-size:14.5px;line-height:1.85">
+              على الآيفون: لا يستطيع أي تطبيق منع لقطة الشاشة — هذه حقيقة النظام، لا خيارنا.
+              لكننا نرصدها ونُعلمك باسم من التقطها، ونخفي الصور فوراً إذا بدأ تسجيل للشاشة.
+            </p>
+            <hr class="rule">
+            <p style="margin:0;font-size:14.5px;line-height:1.85">
+              وفي الحالتين: كل صورة تُعرض تحمل علامة تعريف بمن يراها، فإن انتشرت عُرف مصدرها.
+            </p>
+          </div>
+
+          <button class="btn danger" style="margin-top:18px">سحب كل الأذونات</button>
+          <p class="note" style="text-align:center">لا حاجة لسبب، والسحب فوري.</p>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'capture',
+    tab: 'تسجيل الشاشة',
+    note: 'على الآيفون يُعرف التسجيل قبل التقاط أول إطار، فتُغطّى الصور في الوقت المناسب. الشاشة تقول السبب — شاشة تسوّد بلا تفسير تُقرأ كعطل.',
+    html: `
+      <div class="screen">
+        ${appbar('اليوم', '٤ متبقّون')}
+        <div class="pad" style="display:grid;place-items:center;min-height:560px;text-align:center">
+          <div>
+            <div style="display:grid;place-items:center">${star(34, 'var(--teal)')}</div>
+            <h3 class="hd" style="margin-top:22px">تسجيل الشاشة قيد التشغيل</h3>
+            <p class="body" style="color:var(--ink-soft)">
+              أخفينا المحتوى ما دام التسجيل شغّالاً. أوقف التسجيل ليعود الظهور.
+            </p>
+            <div class="panel accent" style="margin-top:22px;text-align:right">
+              <p style="margin:0;font-size:14.5px;line-height:1.85">
+                صاحب الصور يرى أن تسجيلاً جرى أثناء اطّلاعك، مع الوقت.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'meeting',
+    tab: 'لقاء المكتب',
+    note: 'اللقاء الأول عندنا: غرفة محجوزة، موظّف حاضر، والأهل مرحّب بهم. هذا ما توافق عليه العائلات، ويُلغي أخطر لحظة في أي تعارف.',
+    html: `
+      <div class="screen">
+        ${appbar('لقاء في المكتب')}
+        <div class="pad">
+          <div class="panel accent-alt">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              ${star(18, 'var(--accent)')}
+              <span style="font-size:16.5px;font-weight:600">الموعد مؤكد</span>
+            </div>
+            <hr class="rule">
+            <dl style="margin:0">
+              <div class="kv"><dt>الموعد</dt><dd>الخميس 25 أيلول · 5:00 مساءً</dd></div>
+              <div class="kv"><dt>المكتب</dt><dd>مكتب رام الله</dd></div>
+              <div class="kv"><dt>العنوان</dt><dd style="font-weight:400">شارع الإرسال، عمارة الأمل، الطابق الثالث</dd></div>
+              <div class="kv"><dt>الغرفة</dt><dd>غرفة 1</dd></div>
+              <div class="kv"><dt>الموظّفة</dt><dd>أم محمد</dd></div>
+              <div class="kv"><dt>العائلات</dt><dd>الطرفان يحضران مع أهلهما</dd></div>
+            </dl>
+          </div>
+
+          <div class="panel" style="margin-top:14px">
+            <p class="eyebrow">قبل أن تأتي</p>
+            <div class="line-item" style="padding-top:4px">${ico.clock}<span>احضر قبل الموعد بعشر دقائق</span></div>
+            <div class="line-item">${ico.check}<span>أحضِر هويتك</span></div>
+            <div class="line-item">${ico.face}<span>إن تأخرت أو اعتذرت، أخبرنا من التطبيق</span></div>
+          </div>
+
+          <p class="note">نسجّل الحضور. عدم الحضور دون إشعار يُسجَّل في ملفك.</p>
+          <button class="btn quiet" style="margin-top:10px;color:var(--danger)">إلغاء اللقاء</button>
+        </div>
+      </div>`,
+  },
+
+  {
+    id: 'chat',
+    tab: 'المحادثة',
+    note: 'المحرّر ينبّه قبل الإرسال بدل أن يشوّه الرسالة بعده. معظم عمليات النصب تبدأ بالانتقال إلى تطبيق آخر.',
+    html: `
+      <div class="screen">
+        <div class="appbar" style="grid-template-columns:30px 1fr 30px">
+          <span class="icon">${ico.back}</span>
+          <div style="text-align:center">
+            <h2 style="margin:0">يوسف</h2>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:1px">الوليّ يطّلع على المحادثة</div>
+          </div>
+          <span class="icon">${ico.shield}</span>
+        </div>
+
+        <div style="padding:0 18px 14px">
+          <div class="banner info">
+            ${ico.room}
+            <span>مكالمة مرئية داخل التطبيق قبل تبادل أي وسيلة تواصل.</span>
+          </div>
+        </div>
+
+        <div class="pad">
+          <div class="thread">
+            <div class="bubble them">أهلاً، تشرفت بملفك. عيلتي عارفة إني بدوّر، وإذا حابة نحكي بجدية أنا جاهز.</div>
+            <div class="bubble me">أهلاً وسهلاً. بابا هو الولي وهو مطّلع. بحب أعرف أكثر عن عيلتك.</div>
+            <div class="bubble them">
+              أكيد. أبوي من الخليل وأمي من نابلس، وإخوتي ثلاثة. رقمي ⋯ إذا بتحبي نكمل هناك.
+              <small>حُذفت وسيلة تواصل من هذه الرسالة</small>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:16px 18px 0">
+          <div class="banner warn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            <span>لا يمكن إرسال أرقام أو حسابات قبل المكالمة المرئية. معظم عمليات النصب تبدأ بالانتقال إلى تطبيق آخر.</span>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="box">اكتب رسالة</div>
+          <button class="send" type="button" aria-label="إرسال">${ico.send}</button>
+        </div>
+      </div>`,
+  },
+];
+
+// ------------------------------------------------------------------ //
+
+const screensEl = document.getElementById('screens');
+const tabsEl = document.getElementById('tabs');
+const noteEl = document.getElementById('screennote');
+const viewport = document.getElementById('viewport');
+
+screensEl.innerHTML = SCREENS.map(s => s.html.replace('<div class="screen', `<div id="s-${s.id}" class="screen`)).join('');
+
+tabsEl.innerHTML = SCREENS.map((s, i) => `
+  <button class="tab" role="tab" data-id="${s.id}" aria-selected="${i === 0}">${s.tab}</button>`).join('');
+
+function show(id) {
+  SCREENS.forEach(s => {
+    const el = document.getElementById(`s-${s.id}`);
+    if (el) el.dataset.active = String(s.id === id);
+  });
+  tabsEl.querySelectorAll('.tab').forEach(t =>
+    t.setAttribute('aria-selected', String(t.dataset.id === id)));
+  noteEl.textContent = SCREENS.find(s => s.id === id).note;
+  viewport.scrollTop = 0;
+  try { localStorage.setItem('nasib.screen', id); } catch (e) { /* private window */ }
+}
+
+tabsEl.addEventListener('click', e => {
+  const t = e.target.closest('.tab');
+  if (t) show(t.dataset.id);
+});
+
+// The chips are live so the form screen feels like a form, not a picture.
+screensEl.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  chip.parentElement.querySelectorAll('.chip')
+    .forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
+});
+
+let saved = null;
+try { saved = localStorage.getItem('nasib.screen'); } catch (e) { /* ignore */ }
+show(SCREENS.some(s => s.id === saved) ? saved : SCREENS[0].id);
+
+const btn = document.getElementById('themebtn');
+function currentlyDark() {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t) return t === 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function syncLabel() { btn.textContent = currentlyDark() ? 'الوضع الفاتح' : 'الوضع الداكن'; }
+btn.addEventListener('click', () => {
+  document.documentElement.setAttribute('data-theme', currentlyDark() ? 'light' : 'dark');
+  syncLabel();
+});
+syncLabel();
+</script>

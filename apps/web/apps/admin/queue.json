@@ -1,0 +1,1662 @@
+{
+  "generated_at": "2026-09-22T16:52:15.068836+00:00",
+  "cases": [
+    {
+      "name": "photo_request_serial",
+      "queue": "طلب رؤية صور",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T11:52:15.068836+00:00",
+      "kind": "photo_request",
+      "requester": {
+        "display_name": "طارق",
+        "age": 30,
+        "city": "نابلس",
+        "document_verified": true,
+        "identity": 88,
+        "intent": 79,
+        "reports_against": 3,
+        "requests_last_30d": 14,
+        "approved_before": 0,
+        "note": null
+      },
+      "owner": {
+        "display_name": "أميرة",
+        "age": 28,
+        "city": "رام الله"
+      },
+      "flags": [
+        {
+          "severity": "critical",
+          "detail": "ثلاثة بلاغات ضدّ هذا الحساب خلال شهر."
+        },
+        {
+          "severity": "high",
+          "detail": "14 طلب رؤية صور خلال 30 يوماً، لم يُقبل أيّ منها."
+        }
+      ]
+    },
+    {
+      "name": "photo_request_hassan",
+      "queue": "طلب رؤية صور",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T14:52:15.068836+00:00",
+      "kind": "photo_request",
+      "requester": {
+        "display_name": "حسن",
+        "age": 32,
+        "city": "عمّان",
+        "document_verified": false,
+        "identity": 98,
+        "intent": 52,
+        "reports_against": 0,
+        "requests_last_30d": 2,
+        "approved_before": 1,
+        "note": "أهلاً، أنا وعيلتي من نابلس وحابب أتعرف عليكم."
+      },
+      "owner": {
+        "display_name": "أميرة",
+        "age": 28,
+        "city": "رام الله"
+      },
+      "flags": [
+        {
+          "severity": "medium",
+          "detail": "تناقض مسجّل في ملفه: صرّح بعدم وجود أبناء، ونصّه يذكر أولاده."
+        }
+      ]
+    },
+    {
+      "name": "meeting_ramallah",
+      "queue": "ترتيب لقاء",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T09:52:15.068836+00:00",
+      "kind": "meeting",
+      "pair": [
+        "يوسف، 32",
+        "أميرة، 28"
+      ],
+      "city": "رام الله",
+      "families_attending": true,
+      "slots": [
+        {
+          "when": "الخميس 25 أيلول · 5:00 مساءً",
+          "office": "مكتب رام الله",
+          "room": "غرفة 1",
+          "staff": "أم محمد"
+        },
+        {
+          "when": "الجمعة 26 أيلول · 11:00 صباحاً",
+          "office": "مكتب رام الله",
+          "room": "غرفة 2",
+          "staff": "أبو خالد"
+        },
+        {
+          "when": "السبت 27 أيلول · 4:00 مساءً",
+          "office": "مكتب رام الله",
+          "room": "غرفة 1",
+          "staff": "أم محمد"
+        }
+      ]
+    },
+    {
+      "name": "disposable_number",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T08:52:15.068836+00:00",
+      "applicant": {
+        "display_name": "نور",
+        "age": 28,
+        "gender": "female",
+        "city": "رام الله",
+        "country": "PS",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Pharmacist",
+        "education": "BSc Pharmacy, Birzeit University",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.",
+        "photo_count": 3,
+        "phone_masked": "+1555••••••99"
+      },
+      "device": {
+        "fingerprint": "fp-cd128c53ccdf",
+        "platform": "android",
+        "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "Number is voip on Disposable Inc."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-cd128c53ccdf",
+            "platform": "android",
+            "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "fail",
+          "score": 0.07999999999999996,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "voip",
+            "carrier": "Disposable Inc",
+            "country": "US",
+            "disposable": true,
+            "risk": 0.92
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "disposable_number",
+          "severity": "high",
+          "detail": "Number is voip on Disposable Inc.",
+          "quote": null,
+          "check": "phone"
+        }
+      ],
+      "run": {
+        "run_id": "e0a956b6-1432-46ed-92eb-ec9e8a8ccf5c",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.03,
+        "short_circuited_on": "phone"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "romance_scammer",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T09:04:15.068836+00:00",
+      "applicant": {
+        "display_name": "David A.",
+        "age": 47,
+        "gender": "male",
+        "city": "Houston",
+        "country": "US",
+        "tier": "bronze",
+        "marital_status": "widowed",
+        "children_count": 0,
+        "occupation": "Engineer",
+        "education": null,
+        "timeline": "within_6_months",
+        "family_aware": false,
+        "bio": "I am a widowed engineer currently working on an oil rig offshore. Allah brought us together for a reason. I am serious and I want to marry soon. Message me on WhatsApp, I do not check this app often. I also help people with crypto investment if you are interested.",
+        "photo_count": 1,
+        "phone_masked": "+1555••••••34"
+      },
+      "device": {
+        "fingerprint": "fp-61bb176271e7",
+        "platform": "android",
+        "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 2
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "Number is voip on Disposable Inc."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-61bb176271e7",
+            "platform": "android",
+            "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 2
+          }
+        },
+        {
+          "type": "phone",
+          "result": "fail",
+          "score": 0.07999999999999996,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "voip",
+            "carrier": "Disposable Inc",
+            "country": "US",
+            "disposable": true,
+            "risk": 0.92
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "disposable_number",
+          "severity": "high",
+          "detail": "Number is voip on Disposable Inc.",
+          "quote": null,
+          "check": "phone"
+        }
+      ],
+      "run": {
+        "run_id": "69621182-bca6-4c18-98e5-18738d5981ad",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.03,
+        "short_circuited_on": "phone"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "emulator_account",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T10:34:15.068836+00:00",
+      "applicant": {
+        "display_name": "سارة",
+        "age": 28,
+        "gender": "female",
+        "city": "رام الله",
+        "country": "PS",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Pharmacist",
+        "education": "BSc Pharmacy, Birzeit University",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.",
+        "photo_count": 3,
+        "phone_masked": "+9705••••••56"
+      },
+      "device": {
+        "fingerprint": "fp-567e831002fb",
+        "platform": "android",
+        "integrity_verdict": "FAIL",
+        "is_emulator": true,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "Running on an emulator.",
+          "Platform attestation returned FAIL."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "fail",
+          "score": 0.5,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-567e831002fb",
+            "platform": "android",
+            "integrity_verdict": "FAIL",
+            "is_emulator": true,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "emulator",
+          "severity": "high",
+          "detail": "Running on an emulator.",
+          "quote": null,
+          "check": "device"
+        },
+        {
+          "code": "integrity_failed",
+          "severity": "high",
+          "detail": "Platform attestation returned FAIL.",
+          "quote": null,
+          "check": "device"
+        }
+      ],
+      "run": {
+        "run_id": "6ee42f78-d0f6-43d6-aa26-2e8663f5f1fa",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.01,
+        "short_circuited_on": "device"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "stolen_photos",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T10:46:15.068836+00:00",
+      "applicant": {
+        "display_name": "آدم",
+        "age": 32,
+        "gender": "male",
+        "city": "عمّان",
+        "country": "JO",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Civil engineer",
+        "education": "BSc Civil Engineering",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.",
+        "photo_count": 2,
+        "phone_masked": "+9627••••••67"
+      },
+      "device": {
+        "fingerprint": "fp-2ea50cdd031f",
+        "platform": "ios",
+        "integrity_verdict": "PASS",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "2 of 2 profile photos do not match the liveness selfie (lowest similarity -0.03)."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-2ea50cdd031f",
+            "platform": "ios",
+            "integrity_verdict": "PASS",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "fail",
+          "score": -0.027963397253756378,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "17c0d6b3-a2d7-4a3b-8400-72b2be2b73b4": -0.027963397253756378,
+              "ca9cff83-a6bd-49d0-aa3b-da63baec5279": -0.027963397253756378
+            },
+            "threshold": 0.62,
+            "mismatched": [
+              "17c0d6b3-a2d7-4a3b-8400-72b2be2b73b4",
+              "ca9cff83-a6bd-49d0-aa3b-da63baec5279"
+            ]
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "photo_not_applicant",
+          "severity": "critical",
+          "detail": "2 of 2 profile photos do not match the liveness selfie (lowest similarity -0.03).",
+          "quote": null,
+          "check": "face_match"
+        }
+      ],
+      "run": {
+        "run_id": "a70c4c4c-8878-44ab-98e0-2a46663eec4a",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.28,
+        "short_circuited_on": "face_match"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "device_farm_account",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T12:16:15.068836+00:00",
+      "applicant": {
+        "display_name": "هدى",
+        "age": 28,
+        "gender": "female",
+        "city": "رام الله",
+        "country": "PS",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Pharmacist",
+        "education": "BSc Pharmacy, Birzeit University",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.",
+        "photo_count": 3,
+        "phone_masked": "+9705••••••56"
+      },
+      "device": {
+        "fingerprint": "fp-55a1c5d78c52",
+        "platform": "android",
+        "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+        "is_emulator": false,
+        "is_rooted": true,
+        "vpn_detected": false,
+        "install_id_seen_count": 6
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "Device is rooted or jailbroken.",
+          "6 accounts have registered from this device."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "fail",
+          "score": 0.5,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-55a1c5d78c52",
+            "platform": "android",
+            "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+            "is_emulator": false,
+            "is_rooted": true,
+            "vpn_detected": false,
+            "install_id_seen_count": 6
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "rooted_device",
+          "severity": "medium",
+          "detail": "Device is rooted or jailbroken.",
+          "quote": null,
+          "check": "device"
+        },
+        {
+          "code": "device_reuse",
+          "severity": "high",
+          "detail": "6 accounts have registered from this device.",
+          "quote": null,
+          "check": "device"
+        }
+      ],
+      "run": {
+        "run_id": "d86dff5a-58bb-4d6d-9fff-6ff73268fb76",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.01,
+        "short_circuited_on": "device"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "screen_replay_spoof",
+      "queue": "اعتراض",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T12:28:15.068836+00:00",
+      "applicant": {
+        "display_name": "رامي",
+        "age": 32,
+        "gender": "male",
+        "city": "عمّان",
+        "country": "JO",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Civil engineer",
+        "education": "BSc Civil Engineering",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.",
+        "photo_count": 2,
+        "phone_masked": "+9627••••••67"
+      },
+      "device": {
+        "fingerprint": "fp-8b6fea0070e1",
+        "platform": "ios",
+        "integrity_verdict": "PASS",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 0,
+        "intent": 0,
+        "band": "auto_reject",
+        "rationale": [
+          "Presentation attack detected: screen_replay."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-8b6fea0070e1",
+            "platform": "ios",
+            "integrity_verdict": "PASS",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "fail",
+          "score": 0.12,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "liveness_screen_replay",
+          "severity": "critical",
+          "detail": "Presentation attack detected: screen_replay.",
+          "quote": null,
+          "check": "liveness"
+        }
+      ],
+      "run": {
+        "run_id": "69eef3c5-bdd5-4eda-a904-f306f83a5831",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.28,
+        "short_circuited_on": "liveness"
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "married_man_contradiction",
+      "queue": "طلب انضمام على الحدّ",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T07:22:15.068836+00:00",
+      "applicant": {
+        "display_name": "حسن",
+        "age": 32,
+        "gender": "male",
+        "city": "عمّان",
+        "country": "JO",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Civil engineer",
+        "education": "BSc Civil Engineering",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "Engineer in Amman. My kids are the most important thing in my life and any woman I marry must accept them. Looking for someone serious.",
+        "photo_count": 2,
+        "phone_masked": "+9627••••••67"
+      },
+      "device": {
+        "fingerprint": "fp-64132e9e2fdb",
+        "platform": "ios",
+        "integrity_verdict": "PASS",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 98,
+        "intent": 52,
+        "band": "review",
+        "rationale": [
+          "Profile declares no children, bio refers to the applicant's own children."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-64132e9e2fdb",
+            "platform": "ios",
+            "integrity_verdict": "PASS",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "932df184-3344-4b94-bee4-fef5e08898b5": 1.0,
+              "9c1f2327-7549-4e16-876d-31cef60a1616": 1.0
+            },
+            "threshold": 0.62,
+            "mismatched": []
+          }
+        },
+        {
+          "type": "duplicate_face",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "matches": [],
+            "threshold": 0.78
+          }
+        },
+        {
+          "type": "intent",
+          "result": "pass",
+          "score": 0.585,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "bio_length": 135,
+            "photo_count": 2,
+            "fields_filled": 3
+          }
+        },
+        {
+          "type": "consistency",
+          "result": "inconclusive",
+          "score": 0.9,
+          "vendor": "mock-llm",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "intent": "marriage_seeking",
+            "intent_confidence": 0.9,
+            "contradictions": [
+              {
+                "code": "children_contradiction",
+                "detail": "Profile declares no children, bio refers to the applicant's own children.",
+                "quote": "my kids"
+              }
+            ],
+            "scam_signals": [],
+            "effort": 0.34,
+            "language": "en"
+          }
+        },
+        {
+          "type": "reverse_image",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": "mock-reverse-image",
+          "cost_usd": 0.03,
+          "duration_ms": 0,
+          "details": {
+            "matches": []
+          }
+        },
+        {
+          "type": "document",
+          "result": "skipped",
+          "score": null,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {}
+        }
+      ],
+      "findings": [
+        {
+          "code": "children_contradiction",
+          "severity": "high",
+          "detail": "Profile declares no children, bio refers to the applicant's own children.",
+          "quote": "my kids",
+          "check": "consistency"
+        }
+      ],
+      "run": {
+        "run_id": "ebd860c9-5787-4e64-9c9c-8131bf52f3d1",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.33,
+        "short_circuited_on": null
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "low_effort_applicant",
+      "queue": "طلب انضمام على الحدّ",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T13:58:15.068836+00:00",
+      "applicant": {
+        "display_name": "رنا",
+        "age": 28,
+        "gender": "female",
+        "city": "رام الله",
+        "country": "PS",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": null,
+        "education": null,
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "بدور على زوج",
+        "photo_count": 1,
+        "phone_masked": "+9705••••••56"
+      },
+      "device": {
+        "fingerprint": "fp-5bd57de77816",
+        "platform": "android",
+        "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 98,
+        "intent": 58,
+        "band": "review",
+        "rationale": [
+          "Intent classified as ambiguous, not clearly marriage-seeking."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-5bd57de77816",
+            "platform": "android",
+            "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "pass",
+          "score": 0.9999999999999998,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "c0e7f3d0-0862-4878-9f52-995d61f63d46": 0.9999999999999998
+            },
+            "threshold": 0.62,
+            "mismatched": []
+          }
+        },
+        {
+          "type": "duplicate_face",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "matches": [],
+            "threshold": 0.78
+          }
+        },
+        {
+          "type": "intent",
+          "result": "pass",
+          "score": 0.182,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "bio_length": 12,
+            "photo_count": 1,
+            "fields_filled": 1
+          }
+        },
+        {
+          "type": "consistency",
+          "result": "pass",
+          "score": 0.6,
+          "vendor": "mock-llm",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "intent": "ambiguous",
+            "intent_confidence": 0.6,
+            "contradictions": [],
+            "scam_signals": [],
+            "effort": 0.03,
+            "language": "ar"
+          }
+        },
+        {
+          "type": "reverse_image",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": "mock-reverse-image",
+          "cost_usd": 0.03,
+          "duration_ms": 0,
+          "details": {
+            "matches": []
+          }
+        },
+        {
+          "type": "document",
+          "result": "skipped",
+          "score": null,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {}
+        }
+      ],
+      "findings": [
+        {
+          "code": "minimal_bio",
+          "severity": "low",
+          "detail": "Bio is 12 characters. Applicants who write little rarely convert.",
+          "quote": null,
+          "check": "intent"
+        },
+        {
+          "code": "few_photos",
+          "severity": "low",
+          "detail": "1 photo(s) uploaded.",
+          "quote": null,
+          "check": "intent"
+        }
+      ],
+      "run": {
+        "run_id": "d2bff863-a168-4593-8fb2-f58fc2bb5c34",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.33,
+        "short_circuited_on": null
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "document_age_mismatch",
+      "queue": "طلب انضمام على الحدّ",
+      "in_queue": true,
+      "waiting_since": "2026-09-22T15:40:15.068836+00:00",
+      "applicant": {
+        "display_name": "نبيل",
+        "age": 32,
+        "gender": "male",
+        "city": "عمّان",
+        "country": "JO",
+        "tier": "gold",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Civil engineer",
+        "education": "BSc Civil Engineering",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.",
+        "photo_count": 2,
+        "phone_masked": "+9627••••••67"
+      },
+      "device": {
+        "fingerprint": "fp-edb5422cc97e",
+        "platform": "ios",
+        "integrity_verdict": "PASS",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 83,
+        "intent": 91,
+        "band": "review",
+        "rationale": [
+          "Declared birth year 1994, document shows 1982."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-edb5422cc97e",
+            "platform": "ios",
+            "integrity_verdict": "PASS",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "0e731007-598e-49a9-93ca-ca302ad8b0a3": 1.0,
+              "8b02750d-c833-4f26-bbdd-845936b0c68f": 1.0
+            },
+            "threshold": 0.62,
+            "mismatched": []
+          }
+        },
+        {
+          "type": "duplicate_face",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "matches": [],
+            "threshold": 0.78
+          }
+        },
+        {
+          "type": "intent",
+          "result": "pass",
+          "score": 0.819,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "bio_length": 322,
+            "photo_count": 2,
+            "fields_filled": 3
+          }
+        },
+        {
+          "type": "consistency",
+          "result": "pass",
+          "score": 0.9,
+          "vendor": "mock-llm",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "intent": "marriage_seeking",
+            "intent_confidence": 0.9,
+            "contradictions": [],
+            "scam_signals": [],
+            "effort": 0.81,
+            "language": "en"
+          }
+        },
+        {
+          "type": "reverse_image",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": "mock-reverse-image",
+          "cost_usd": 0.03,
+          "duration_ms": 0,
+          "details": {
+            "matches": []
+          }
+        },
+        {
+          "type": "document",
+          "result": "fail",
+          "score": 0.94,
+          "vendor": "mock-document",
+          "cost_usd": 1.6,
+          "duration_ms": 0,
+          "details": {
+            "fields": {
+              "full_name": "REDACTED",
+              "expiry": "2031-04-18",
+              "document_type": "national_id",
+              "issuing_country": "PS",
+              "date_of_birth": "1982-07-11"
+            },
+            "face_match_score": 0.91
+          }
+        }
+      ],
+      "findings": [
+        {
+          "code": "age_contradiction",
+          "severity": "high",
+          "detail": "Declared birth year 1994, document shows 1982.",
+          "quote": null,
+          "check": "document"
+        }
+      ],
+      "run": {
+        "run_id": "7ba53f6d-c520-401f-bae2-3b697683fd3d",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 1.93,
+        "short_circuited_on": null
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "genuine_man_gold",
+      "queue": "عيّنة تدقيق",
+      "in_queue": false,
+      "waiting_since": "2026-09-22T14:10:15.068836+00:00",
+      "applicant": {
+        "display_name": "يوسف",
+        "age": 32,
+        "gender": "male",
+        "city": "عمّان",
+        "country": "JO",
+        "tier": "gold",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Civil engineer",
+        "education": "BSc Civil Engineering",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.",
+        "photo_count": 2,
+        "phone_masked": "+9627••••••67"
+      },
+      "device": {
+        "fingerprint": "fp-fc2cde61f6ce",
+        "platform": "ios",
+        "integrity_verdict": "PASS",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 100,
+        "intent": 91,
+        "band": "auto_admit",
+        "rationale": [
+          "Government document verified and matched to the liveness selfie."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-fc2cde61f6ce",
+            "platform": "ios",
+            "integrity_verdict": "PASS",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "2e24438a-98ef-4a2c-8ba0-e835a6384f29": 1.0,
+              "eef4abbf-8b3f-461f-ac79-c93a5075d101": 1.0
+            },
+            "threshold": 0.62,
+            "mismatched": []
+          }
+        },
+        {
+          "type": "duplicate_face",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "matches": [],
+            "threshold": 0.78
+          }
+        },
+        {
+          "type": "intent",
+          "result": "pass",
+          "score": 0.819,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "bio_length": 322,
+            "photo_count": 2,
+            "fields_filled": 3
+          }
+        },
+        {
+          "type": "consistency",
+          "result": "pass",
+          "score": 0.9,
+          "vendor": "mock-llm",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "intent": "marriage_seeking",
+            "intent_confidence": 0.9,
+            "contradictions": [],
+            "scam_signals": [],
+            "effort": 0.81,
+            "language": "en"
+          }
+        },
+        {
+          "type": "reverse_image",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": "mock-reverse-image",
+          "cost_usd": 0.03,
+          "duration_ms": 0,
+          "details": {
+            "matches": []
+          }
+        },
+        {
+          "type": "document",
+          "result": "pass",
+          "score": 0.94,
+          "vendor": "mock-document",
+          "cost_usd": 1.6,
+          "duration_ms": 0,
+          "details": {
+            "fields": {
+              "full_name": "REDACTED",
+              "expiry": "2031-04-18",
+              "document_type": "national_id",
+              "issuing_country": "PS",
+              "date_of_birth": "1994-03-11"
+            },
+            "face_match_score": 0.91
+          }
+        }
+      ],
+      "findings": [],
+      "run": {
+        "run_id": "c0406c88-433f-4c4f-a2ab-6c04d647592b",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 1.93,
+        "short_circuited_on": null
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    },
+    {
+      "name": "genuine_woman",
+      "queue": "عيّنة تدقيق",
+      "in_queue": false,
+      "waiting_since": "2026-09-22T15:52:15.068836+00:00",
+      "applicant": {
+        "display_name": "أميرة",
+        "age": 28,
+        "gender": "female",
+        "city": "رام الله",
+        "country": "PS",
+        "tier": "bronze",
+        "marital_status": "never_married",
+        "children_count": 0,
+        "occupation": "Pharmacist",
+        "education": "BSc Pharmacy, Birzeit University",
+        "timeline": "within_1_year",
+        "family_aware": true,
+        "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.",
+        "photo_count": 3,
+        "phone_masked": "+9705••••••56"
+      },
+      "device": {
+        "fingerprint": "fp-9183d07f22d8",
+        "platform": "android",
+        "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+        "is_emulator": false,
+        "is_rooted": false,
+        "vpn_detected": false,
+        "install_id_seen_count": 1
+      },
+      "trust": {
+        "identity": 98,
+        "intent": 91,
+        "band": "auto_admit",
+        "rationale": [
+          "All checks passed; no finding above low severity."
+        ]
+      },
+      "checks": [
+        {
+          "type": "device",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.01,
+          "duration_ms": 0,
+          "details": {
+            "fingerprint": "fp-9183d07f22d8",
+            "platform": "android",
+            "integrity_verdict": "MEETS_DEVICE_INTEGRITY",
+            "is_emulator": false,
+            "is_rooted": false,
+            "vpn_detected": false,
+            "install_id_seen_count": 1
+          }
+        },
+        {
+          "type": "phone",
+          "result": "pass",
+          "score": 0.95,
+          "vendor": "mock-phone-intel",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "line_type": "mobile",
+            "carrier": "Jawwal",
+            "country": "PS",
+            "disposable": false,
+            "risk": 0.05
+          }
+        },
+        {
+          "type": "scam_pattern",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "hits": {}
+          }
+        },
+        {
+          "type": "liveness",
+          "result": "pass",
+          "score": 0.96,
+          "vendor": "mock-liveness",
+          "cost_usd": 0.25,
+          "duration_ms": 0,
+          "details": {
+            "challenge": null
+          }
+        },
+        {
+          "type": "face_match",
+          "result": "pass",
+          "score": 0.9999999999999998,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "per_photo": {
+              "d7e8403f-0f97-4739-942e-d7ef7bd25d7c": 0.9999999999999998,
+              "67fadb0a-966c-4340-8dc2-72e82043ceae": 0.9999999999999998,
+              "800a9fca-b00c-4fe2-9ee1-eb3594777564": 0.9999999999999998
+            },
+            "threshold": 0.62,
+            "mismatched": []
+          }
+        },
+        {
+          "type": "duplicate_face",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "matches": [],
+            "threshold": 0.78
+          }
+        },
+        {
+          "type": "intent",
+          "result": "pass",
+          "score": 0.804,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {
+            "bio_length": 243,
+            "photo_count": 3,
+            "fields_filled": 3
+          }
+        },
+        {
+          "type": "consistency",
+          "result": "pass",
+          "score": 0.9,
+          "vendor": "mock-llm",
+          "cost_usd": 0.02,
+          "duration_ms": 0,
+          "details": {
+            "intent": "marriage_seeking",
+            "intent_confidence": 0.9,
+            "contradictions": [],
+            "scam_signals": [],
+            "effort": 0.61,
+            "language": "ar"
+          }
+        },
+        {
+          "type": "reverse_image",
+          "result": "pass",
+          "score": 1.0,
+          "vendor": "mock-reverse-image",
+          "cost_usd": 0.03,
+          "duration_ms": 0,
+          "details": {
+            "matches": []
+          }
+        },
+        {
+          "type": "document",
+          "result": "skipped",
+          "score": null,
+          "vendor": null,
+          "cost_usd": 0.0,
+          "duration_ms": 0,
+          "details": {}
+        }
+      ],
+      "findings": [],
+      "run": {
+        "run_id": "4df74a38-8885-46f3-bd75-f8b52aa54a13",
+        "agent_version": "verify-1.0.0",
+        "cost_usd": 0.33,
+        "short_circuited_on": null
+      },
+      "duplicate_accounts": [],
+      "prior_reports": 0
+    }
+  ]
+}

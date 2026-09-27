@@ -1,0 +1,743 @@
+<title>مكتب المراجعة — نصيب</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground:      #F2F0EB;
+  --surface:     #FFFFFF;
+  --surface-2:   #FAF8F4;
+  --line:        #E0DCD3;
+  --line-strong: #C9C3B7;
+  --ink:         #1B1D1A;
+  --ink-2:       #4E524B;
+  --ink-3:       #7C8078;
+
+  --accent:      #2F5D50;
+  --accent-soft: #E4EDE9;
+
+  --ok:          #2F7A4F;
+  --ok-soft:     #E3F0E7;
+  --warn:        #9A6410;
+  --warn-soft:   #F7EEDC;
+  --bad:         #97281F;
+  --bad-soft:    #F7E4E1;
+  --neutral-soft:#EDEBE6;
+
+  --ar: "IBM Plex Sans Arabic", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  --rail: 300px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #131513;
+    --surface:     #1A1D1A;
+    --surface-2:   #202320;
+    --line:        #2E322D;
+    --line-strong: #434840;
+    --ink:         #EDEEEA;
+    --ink-2:       #B3B8AF;
+    --ink-3:       #7F857C;
+    --accent:      #7FB9A6;
+    --accent-soft: #1D2A26;
+    --ok:          #74C596;
+    --ok-soft:     #17291E;
+    --warn:        #D6A356;
+    --warn-soft:   #2A2213;
+    --bad:         #E2867C;
+    --bad-soft:    #2C1917;
+    --neutral-soft:#252822;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #131513;
+  --surface:     #1A1D1A;
+  --surface-2:   #202320;
+  --line:        #2E322D;
+  --line-strong: #434840;
+  --ink:         #EDEEEA;
+  --ink-2:       #B3B8AF;
+  --ink-3:       #7F857C;
+  --accent:      #7FB9A6;
+  --accent-soft: #1D2A26;
+  --ok:          #74C596;
+  --ok-soft:     #17291E;
+  --warn:        #D6A356;
+  --warn-soft:   #2A2213;
+  --bad:         #E2867C;
+  --bad-soft:    #2C1917;
+  --neutral-soft:#252822;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--ar);
+  font-size: 14.5px;
+  /* Arabic needs more line height than Latin to stay readable at this size. */
+  line-height: 1.75;
+  direction: rtl;
+  text-align: right;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Latin-script fragments — ids, versions, paths — stay left-to-right
+   inside an otherwise right-to-left page. */
+.ltr { direction: ltr; unicode-bidi: isolate; display: inline-block; font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; font-family: var(--mono); direction: ltr; unicode-bidi: isolate; }
+
+.shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); min-height: 100%; }
+
+.topbar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.wordmark { font-weight: 700; font-size: 15.5px; display: flex; align-items: center; gap: 9px; }
+.wordmark::before {
+  content: ""; width: 9px; height: 9px; border-radius: 2px;
+  background: var(--accent); transform: rotate(45deg);
+}
+.wordmark span { color: var(--ink-3); font-weight: 500; font-size: 13.5px; }
+
+.topbar-stats { display: flex; gap: 20px; margin-inline-start: auto; flex-wrap: wrap; }
+.stat { display: flex; align-items: baseline; gap: 6px; }
+.stat b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--ink-3); }
+
+.demo-banner {
+  grid-column: 1 / -1;
+  background: var(--warn-soft); color: var(--warn);
+  font-size: 12.5px; padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- queue ---------- */
+
+.rail {
+  border-inline-end: 1px solid var(--line);
+  background: var(--surface-2);
+  padding-block: 4px 24px;
+  min-width: 0;
+}
+.rail-group { padding: 14px 16px 6px; }
+.rail-group h2 { margin: 0; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.rail-group p { margin: 2px 0 0; font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+
+.case-btn {
+  display: block; width: 100%; text-align: inherit;
+  background: none; border: 0;
+  border-inline-start: 3px solid transparent;
+  border-bottom: 1px solid var(--line);
+  padding: 11px 16px; cursor: pointer; font: inherit; color: inherit;
+}
+.case-btn:hover { background: var(--surface); }
+.case-btn[aria-current="true"] { background: var(--surface); border-inline-start-color: var(--accent); }
+.case-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.case-row { display: flex; align-items: center; gap: 8px; }
+.case-name { font-weight: 600; font-size: 14px; }
+.case-wait { margin-inline-start: auto; font-size: 11.5px; color: var(--ink-3); }
+.case-sub { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+
+.sev { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sev-bad { background: var(--bad); }
+.sev-warn { background: var(--warn); }
+.sev-ok { background: var(--ok); }
+
+/* ---------- packet ---------- */
+
+.packet { padding: 22px 24px 64px; min-width: 0; }
+.packet > * + * { margin-top: 20px; }
+
+.packet-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.packet-head h1 { margin: 0; font-size: 24px; text-wrap: balance; line-height: 1.4; }
+.packet-head .meta { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 3px 11px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600;
+}
+.pill-bad  { background: var(--bad-soft);  color: var(--bad); }
+.pill-warn { background: var(--warn-soft); color: var(--warn); }
+.pill-ok   { background: var(--ok-soft);   color: var(--ok); }
+
+section.block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+section.block > h2 { margin: 0 0 12px; font-size: 12.5px; color: var(--ink-3); font-weight: 600; }
+.block-note { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
+
+/* the decisive part of a photo request: who is asking, and their history */
+.who { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.who-main { min-width: 0; flex: 1 1 200px; }
+.who-name { font-size: 17px; font-weight: 600; }
+.history { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.hist {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 12px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  min-width: 92px;
+}
+.hist b { font-size: 17px; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.hist span { font-size: 11.5px; color: var(--ink-3); }
+.hist.alarm { background: var(--bad-soft); border-color: transparent; }
+.hist.alarm b, .hist.alarm span { color: var(--bad); }
+
+.finding { display: flex; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.finding:first-of-type { border-top: 0; padding-top: 0; }
+.finding-bar { width: 3px; border-radius: 2px; flex: none; }
+.f-critical .finding-bar, .f-high .finding-bar { background: var(--bad); }
+.f-medium .finding-bar { background: var(--warn); }
+.f-low .finding-bar { background: var(--line-strong); }
+.finding-code { font-family: var(--mono); font-size: 11px; color: var(--ink-3); direction: ltr; }
+.finding-detail { font-size: 14px; margin-top: 2px; }
+
+blockquote.quote {
+  margin: 8px 0 0; padding: 8px 12px;
+  background: var(--surface-2);
+  border-inline-start: 2px solid var(--line-strong);
+  border-radius: 0 6px 6px 0;
+  font-size: 13.5px; color: var(--ink-2); overflow-wrap: anywhere;
+}
+
+.bio { font-size: 15px; line-height: 1.95; }
+.bio.ltr-body { direction: ltr; text-align: left; font-family: var(--ar); }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 20px; }
+.fact dt { font-size: 12px; color: var(--ink-3); }
+.fact dd { margin: 1px 0 0; font-size: 14px; }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: inherit; font-size: 12px; color: var(--ink-3); font-weight: 600;
+     padding: 0 0 7px 12px; white-space: nowrap; }
+td { padding: 7px 0 7px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+       margin-inline-end: 7px; vertical-align: 1px; }
+.d-pass { background: var(--ok); }
+.d-fail { background: var(--bad); }
+.d-inconclusive { background: var(--warn); }
+.d-skipped, .d-error { background: var(--line-strong); }
+
+.photo-strip { display: flex; gap: 10px; flex-wrap: wrap; }
+.photo {
+  width: 92px; aspect-ratio: 4/5; max-width: 100%;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 6px, var(--ground) 6px, var(--ground) 12px);
+  display: flex; flex-direction: column; justify-content: flex-end; padding: 6px;
+}
+.photo small { font-size: 11px; color: var(--ink-2); }
+.photo.live { border-color: var(--accent); }
+
+/* slots a reviewer picks between */
+.slot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface-2);
+  cursor: pointer; margin-bottom: 8px;
+}
+.slot:hover { border-color: var(--accent); }
+.slot input { accent-color: var(--accent); width: 16px; height: 16px; }
+.slot-when { font-weight: 600; }
+.slot-where { font-size: 12.5px; color: var(--ink-3); }
+
+details.recommendation {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+}
+details.recommendation > summary {
+  list-style: none; cursor: pointer; padding: 14px 18px;
+  font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+  display: flex; align-items: center; gap: 9px;
+}
+details.recommendation > summary::-webkit-details-marker { display: none; }
+details.recommendation > summary::before { content: "◂"; color: var(--ink-3); font-size: 11px; }
+details.recommendation[open] > summary::before { content: "▾"; }
+details.recommendation > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rec-body { padding: 14px 18px 18px; border-top: 1px solid var(--line); }
+
+.scores { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px; }
+.score-label { font-size: 12px; color: var(--ink-3); }
+.score-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.meter { width: 130px; max-width: 100%; height: 4px; border-radius: 2px;
+         background: var(--neutral-soft); margin-top: 6px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+
+.rationale { margin: 0; padding-inline-start: 20px; font-size: 13.5px; color: var(--ink-2); }
+.rationale li + li { margin-top: 5px; }
+
+.decide {
+  position: sticky; bottom: 0;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px 18px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+button.act {
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  padding: 9px 16px; border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2); color: var(--ink); cursor: pointer;
+}
+button.act:hover { border-color: var(--ink-3); }
+button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.act.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+:root[data-theme="dark"] button.act.primary,
+:root:not([data-theme="light"]) button.act.primary { color: #10231E; }
+button.act.destructive { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+
+.decide-note { font-size: 12.5px; color: var(--ink-3); margin-inline-start: auto; }
+
+.logged {
+  font-size: 13.5px; padding: 10px 13px; border-radius: 8px;
+  background: var(--accent-soft); border: 1px solid var(--line);
+}
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { border-inline-end: 0; border-bottom: 1px solid var(--line);
+          max-height: 250px; overflow-y: auto; }
+  .packet { padding: 18px 16px 48px; }
+  .topbar { padding: 12px 16px; }
+  .demo-banner { padding-inline: 16px; }
+  .decide { position: static; }
+  .decide-note { margin-inline-start: 0; flex-basis: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="wordmark">مكتب المراجعة <span>نصيب</span></div>
+    <div class="topbar-stats">
+      <div class="stat"><b id="stat-queue">–</b><span>في الانتظار</span></div>
+      <div class="stat"><b id="stat-oldest">–</b><span>أطول انتظار</span></div>
+      <div class="stat"><b id="stat-photo">–</b><span>طلبات صور</span></div>
+      <div class="stat"><b id="stat-cost">–</b><span>الإنفاق اليوم</span></div>
+    </div>
+  </header>
+
+  <p class="demo-banner">
+    نسخة تجريبية — الحالات أدناه مولّدة من محرّك التحقق نفسه ببيانات اختبار. القرارات تُسجَّل في هذه الصفحة فقط.
+  </p>
+
+  <nav class="rail" id="rail" aria-label="قائمة المراجعة"></nav>
+  <main class="packet" id="packet" aria-live="polite"></main>
+</div>
+
+<script>
+const DATA = {"generated_at": "2026-09-22T16:52:15.068836+00:00", "cases": [{"name": "photo_request_serial", "queue": "طلب رؤية صور", "in_queue": true, "waiting_since": "2026-09-22T11:52:15.068836+00:00", "kind": "photo_request", "requester": {"display_name": "طارق", "age": 30, "city": "نابلس", "document_verified": true, "identity": 88, "intent": 79, "reports_against": 3, "requests_last_30d": 14, "approved_before": 0, "note": null}, "owner": {"display_name": "أميرة", "age": 28, "city": "رام الله"}, "flags": [{"severity": "critical", "detail": "ثلاثة بلاغات ضدّ هذا الحساب خلال شهر."}, {"severity": "high", "detail": "14 طلب رؤية صور خلال 30 يوماً، لم يُقبل أيّ منها."}]}, {"name": "photo_request_hassan", "queue": "طلب رؤية صور", "in_queue": true, "waiting_since": "2026-09-22T14:52:15.068836+00:00", "kind": "photo_request", "requester": {"display_name": "حسن", "age": 32, "city": "عمّان", "document_verified": false, "identity": 98, "intent": 52, "reports_against": 0, "requests_last_30d": 2, "approved_before": 1, "note": "أهلاً، أنا وعيلتي من نابلس وحابب أتعرف عليكم."}, "owner": {"display_name": "أميرة", "age": 28, "city": "رام الله"}, "flags": [{"severity": "medium", "detail": "تناقض مسجّل في ملفه: صرّح بعدم وجود أبناء، ونصّه يذكر أولاده."}]}, {"name": "meeting_ramallah", "queue": "ترتيب لقاء", "in_queue": true, "waiting_since": "2026-09-22T09:52:15.068836+00:00", "kind": "meeting", "pair": ["يوسف، 32", "أميرة، 28"], "city": "رام الله", "families_attending": true, "slots": [{"when": "الخميس 25 أيلول · 5:00 مساءً", "office": "مكتب رام الله", "room": "غرفة 1", "staff": "أم محمد"}, {"when": "الجمعة 26 أيلول · 11:00 صباحاً", "office": "مكتب رام الله", "room": "غرفة 2", "staff": "أبو خالد"}, {"when": "السبت 27 أيلول · 4:00 مساءً", "office": "مكتب رام الله", "room": "غرفة 1", "staff": "أم محمد"}]}, {"name": "disposable_number", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T08:52:15.068836+00:00", "applicant": {"display_name": "نور", "age": 28, "gender": "female", "city": "رام الله", "country": "PS", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Pharmacist", "education": "BSc Pharmacy, Birzeit University", "timeline": "within_1_year", "family_aware": true, "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.", "photo_count": 3, "phone_masked": "+1555••••••99"}, "device": {"fingerprint": "fp-cd128c53ccdf", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["Number is voip on Disposable Inc."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-cd128c53ccdf", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "fail", "score": 0.07999999999999996, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "voip", "carrier": "Disposable Inc", "country": "US", "disposable": true, "risk": 0.92}}], "findings": [{"code": "disposable_number", "severity": "high", "detail": "Number is voip on Disposable Inc.", "quote": null, "check": "phone"}], "run": {"run_id": "e0a956b6-1432-46ed-92eb-ec9e8a8ccf5c", "agent_version": "verify-1.0.0", "cost_usd": 0.03, "short_circuited_on": "phone"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "romance_scammer", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T09:04:15.068836+00:00", "applicant": {"display_name": "David A.", "age": 47, "gender": "male", "city": "Houston", "country": "US", "tier": "bronze", "marital_status": "widowed", "children_count": 0, "occupation": "Engineer", "education": null, "timeline": "within_6_months", "family_aware": false, "bio": "I am a widowed engineer currently working on an oil rig offshore. Allah brought us together for a reason. I am serious and I want to marry soon. Message me on WhatsApp, I do not check this app often. I also help people with crypto investment if you are interested.", "photo_count": 1, "phone_masked": "+1555••••••34"}, "device": {"fingerprint": "fp-61bb176271e7", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 2}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["Number is voip on Disposable Inc."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-61bb176271e7", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 2}}, {"type": "phone", "result": "fail", "score": 0.07999999999999996, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "voip", "carrier": "Disposable Inc", "country": "US", "disposable": true, "risk": 0.92}}], "findings": [{"code": "disposable_number", "severity": "high", "detail": "Number is voip on Disposable Inc.", "quote": null, "check": "phone"}], "run": {"run_id": "69621182-bca6-4c18-98e5-18738d5981ad", "agent_version": "verify-1.0.0", "cost_usd": 0.03, "short_circuited_on": "phone"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "emulator_account", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T10:34:15.068836+00:00", "applicant": {"display_name": "سارة", "age": 28, "gender": "female", "city": "رام الله", "country": "PS", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Pharmacist", "education": "BSc Pharmacy, Birzeit University", "timeline": "within_1_year", "family_aware": true, "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.", "photo_count": 3, "phone_masked": "+9705••••••56"}, "device": {"fingerprint": "fp-567e831002fb", "platform": "android", "integrity_verdict": "FAIL", "is_emulator": true, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["Running on an emulator.", "Platform attestation returned FAIL."]}, "checks": [{"type": "device", "result": "fail", "score": 0.5, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-567e831002fb", "platform": "android", "integrity_verdict": "FAIL", "is_emulator": true, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}], "findings": [{"code": "emulator", "severity": "high", "detail": "Running on an emulator.", "quote": null, "check": "device"}, {"code": "integrity_failed", "severity": "high", "detail": "Platform attestation returned FAIL.", "quote": null, "check": "device"}], "run": {"run_id": "6ee42f78-d0f6-43d6-aa26-2e8663f5f1fa", "agent_version": "verify-1.0.0", "cost_usd": 0.01, "short_circuited_on": "device"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "stolen_photos", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T10:46:15.068836+00:00", "applicant": {"display_name": "آدم", "age": 32, "gender": "male", "city": "عمّان", "country": "JO", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Civil engineer", "education": "BSc Civil Engineering", "timeline": "within_1_year", "family_aware": true, "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.", "photo_count": 2, "phone_masked": "+9627••••••67"}, "device": {"fingerprint": "fp-2ea50cdd031f", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["2 of 2 profile photos do not match the liveness selfie (lowest similarity -0.03)."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-2ea50cdd031f", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "fail", "score": -0.027963397253756378, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"17c0d6b3-a2d7-4a3b-8400-72b2be2b73b4": -0.027963397253756378, "ca9cff83-a6bd-49d0-aa3b-da63baec5279": -0.027963397253756378}, "threshold": 0.62, "mismatched": ["17c0d6b3-a2d7-4a3b-8400-72b2be2b73b4", "ca9cff83-a6bd-49d0-aa3b-da63baec5279"]}}], "findings": [{"code": "photo_not_applicant", "severity": "critical", "detail": "2 of 2 profile photos do not match the liveness selfie (lowest similarity -0.03).", "quote": null, "check": "face_match"}], "run": {"run_id": "a70c4c4c-8878-44ab-98e0-2a46663eec4a", "agent_version": "verify-1.0.0", "cost_usd": 0.28, "short_circuited_on": "face_match"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "device_farm_account", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T12:16:15.068836+00:00", "applicant": {"display_name": "هدى", "age": 28, "gender": "female", "city": "رام الله", "country": "PS", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Pharmacist", "education": "BSc Pharmacy, Birzeit University", "timeline": "within_1_year", "family_aware": true, "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.", "photo_count": 3, "phone_masked": "+9705••••••56"}, "device": {"fingerprint": "fp-55a1c5d78c52", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": true, "vpn_detected": false, "install_id_seen_count": 6}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["Device is rooted or jailbroken.", "6 accounts have registered from this device."]}, "checks": [{"type": "device", "result": "fail", "score": 0.5, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-55a1c5d78c52", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": true, "vpn_detected": false, "install_id_seen_count": 6}}], "findings": [{"code": "rooted_device", "severity": "medium", "detail": "Device is rooted or jailbroken.", "quote": null, "check": "device"}, {"code": "device_reuse", "severity": "high", "detail": "6 accounts have registered from this device.", "quote": null, "check": "device"}], "run": {"run_id": "d86dff5a-58bb-4d6d-9fff-6ff73268fb76", "agent_version": "verify-1.0.0", "cost_usd": 0.01, "short_circuited_on": "device"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "screen_replay_spoof", "queue": "اعتراض", "in_queue": true, "waiting_since": "2026-09-22T12:28:15.068836+00:00", "applicant": {"display_name": "رامي", "age": 32, "gender": "male", "city": "عمّان", "country": "JO", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Civil engineer", "education": "BSc Civil Engineering", "timeline": "within_1_year", "family_aware": true, "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.", "photo_count": 2, "phone_masked": "+9627••••••67"}, "device": {"fingerprint": "fp-8b6fea0070e1", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 0, "intent": 0, "band": "auto_reject", "rationale": ["Presentation attack detected: screen_replay."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-8b6fea0070e1", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "fail", "score": 0.12, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}], "findings": [{"code": "liveness_screen_replay", "severity": "critical", "detail": "Presentation attack detected: screen_replay.", "quote": null, "check": "liveness"}], "run": {"run_id": "69eef3c5-bdd5-4eda-a904-f306f83a5831", "agent_version": "verify-1.0.0", "cost_usd": 0.28, "short_circuited_on": "liveness"}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "married_man_contradiction", "queue": "طلب انضمام على الحدّ", "in_queue": true, "waiting_since": "2026-09-22T07:22:15.068836+00:00", "applicant": {"display_name": "حسن", "age": 32, "gender": "male", "city": "عمّان", "country": "JO", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Civil engineer", "education": "BSc Civil Engineering", "timeline": "within_1_year", "family_aware": true, "bio": "Engineer in Amman. My kids are the most important thing in my life and any woman I marry must accept them. Looking for someone serious.", "photo_count": 2, "phone_masked": "+9627••••••67"}, "device": {"fingerprint": "fp-64132e9e2fdb", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 98, "intent": 52, "band": "review", "rationale": ["Profile declares no children, bio refers to the applicant's own children."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-64132e9e2fdb", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"932df184-3344-4b94-bee4-fef5e08898b5": 1.0, "9c1f2327-7549-4e16-876d-31cef60a1616": 1.0}, "threshold": 0.62, "mismatched": []}}, {"type": "duplicate_face", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"matches": [], "threshold": 0.78}}, {"type": "intent", "result": "pass", "score": 0.585, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"bio_length": 135, "photo_count": 2, "fields_filled": 3}}, {"type": "consistency", "result": "inconclusive", "score": 0.9, "vendor": "mock-llm", "cost_usd": 0.02, "duration_ms": 0, "details": {"intent": "marriage_seeking", "intent_confidence": 0.9, "contradictions": [{"code": "children_contradiction", "detail": "Profile declares no children, bio refers to the applicant's own children.", "quote": "my kids"}], "scam_signals": [], "effort": 0.34, "language": "en"}}, {"type": "reverse_image", "result": "pass", "score": 1.0, "vendor": "mock-reverse-image", "cost_usd": 0.03, "duration_ms": 0, "details": {"matches": []}}, {"type": "document", "result": "skipped", "score": null, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {}}], "findings": [{"code": "children_contradiction", "severity": "high", "detail": "Profile declares no children, bio refers to the applicant's own children.", "quote": "my kids", "check": "consistency"}], "run": {"run_id": "ebd860c9-5787-4e64-9c9c-8131bf52f3d1", "agent_version": "verify-1.0.0", "cost_usd": 0.33, "short_circuited_on": null}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "low_effort_applicant", "queue": "طلب انضمام على الحدّ", "in_queue": true, "waiting_since": "2026-09-22T13:58:15.068836+00:00", "applicant": {"display_name": "رنا", "age": 28, "gender": "female", "city": "رام الله", "country": "PS", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": null, "education": null, "timeline": "within_1_year", "family_aware": true, "bio": "بدور على زوج", "photo_count": 1, "phone_masked": "+9705••••••56"}, "device": {"fingerprint": "fp-5bd57de77816", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 98, "intent": 58, "band": "review", "rationale": ["Intent classified as ambiguous, not clearly marriage-seeking."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-5bd57de77816", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "pass", "score": 0.9999999999999998, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"c0e7f3d0-0862-4878-9f52-995d61f63d46": 0.9999999999999998}, "threshold": 0.62, "mismatched": []}}, {"type": "duplicate_face", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"matches": [], "threshold": 0.78}}, {"type": "intent", "result": "pass", "score": 0.182, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"bio_length": 12, "photo_count": 1, "fields_filled": 1}}, {"type": "consistency", "result": "pass", "score": 0.6, "vendor": "mock-llm", "cost_usd": 0.02, "duration_ms": 0, "details": {"intent": "ambiguous", "intent_confidence": 0.6, "contradictions": [], "scam_signals": [], "effort": 0.03, "language": "ar"}}, {"type": "reverse_image", "result": "pass", "score": 1.0, "vendor": "mock-reverse-image", "cost_usd": 0.03, "duration_ms": 0, "details": {"matches": []}}, {"type": "document", "result": "skipped", "score": null, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {}}], "findings": [{"code": "minimal_bio", "severity": "low", "detail": "Bio is 12 characters. Applicants who write little rarely convert.", "quote": null, "check": "intent"}, {"code": "few_photos", "severity": "low", "detail": "1 photo(s) uploaded.", "quote": null, "check": "intent"}], "run": {"run_id": "d2bff863-a168-4593-8fb2-f58fc2bb5c34", "agent_version": "verify-1.0.0", "cost_usd": 0.33, "short_circuited_on": null}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "document_age_mismatch", "queue": "طلب انضمام على الحدّ", "in_queue": true, "waiting_since": "2026-09-22T15:40:15.068836+00:00", "applicant": {"display_name": "نبيل", "age": 32, "gender": "male", "city": "عمّان", "country": "JO", "tier": "gold", "marital_status": "never_married", "children_count": 0, "occupation": "Civil engineer", "education": "BSc Civil Engineering", "timeline": "within_1_year", "family_aware": true, "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.", "photo_count": 2, "phone_masked": "+9627••••••67"}, "device": {"fingerprint": "fp-edb5422cc97e", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 83, "intent": 91, "band": "review", "rationale": ["Declared birth year 1994, document shows 1982."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-edb5422cc97e", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"0e731007-598e-49a9-93ca-ca302ad8b0a3": 1.0, "8b02750d-c833-4f26-bbdd-845936b0c68f": 1.0}, "threshold": 0.62, "mismatched": []}}, {"type": "duplicate_face", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"matches": [], "threshold": 0.78}}, {"type": "intent", "result": "pass", "score": 0.819, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"bio_length": 322, "photo_count": 2, "fields_filled": 3}}, {"type": "consistency", "result": "pass", "score": 0.9, "vendor": "mock-llm", "cost_usd": 0.02, "duration_ms": 0, "details": {"intent": "marriage_seeking", "intent_confidence": 0.9, "contradictions": [], "scam_signals": [], "effort": 0.81, "language": "en"}}, {"type": "reverse_image", "result": "pass", "score": 1.0, "vendor": "mock-reverse-image", "cost_usd": 0.03, "duration_ms": 0, "details": {"matches": []}}, {"type": "document", "result": "fail", "score": 0.94, "vendor": "mock-document", "cost_usd": 1.6, "duration_ms": 0, "details": {"fields": {"full_name": "REDACTED", "expiry": "2031-04-18", "document_type": "national_id", "issuing_country": "PS", "date_of_birth": "1982-07-11"}, "face_match_score": 0.91}}], "findings": [{"code": "age_contradiction", "severity": "high", "detail": "Declared birth year 1994, document shows 1982.", "quote": null, "check": "document"}], "run": {"run_id": "7ba53f6d-c520-401f-bae2-3b697683fd3d", "agent_version": "verify-1.0.0", "cost_usd": 1.93, "short_circuited_on": null}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "genuine_man_gold", "queue": "عيّنة تدقيق", "in_queue": false, "waiting_since": "2026-09-22T14:10:15.068836+00:00", "applicant": {"display_name": "يوسف", "age": 32, "gender": "male", "city": "عمّان", "country": "JO", "tier": "gold", "marital_status": "never_married", "children_count": 0, "occupation": "Civil engineer", "education": "BSc Civil Engineering", "timeline": "within_1_year", "family_aware": true, "bio": "Civil engineer working in Amman for the last five years, originally from a Palestinian family from Al-Khalil. I pray regularly and my family knows I am looking. I would like to marry within the year and settle in Amman, though I am open to moving for the right person. I read a lot of history and play football on Fridays.", "photo_count": 2, "phone_masked": "+9627••••••67"}, "device": {"fingerprint": "fp-fc2cde61f6ce", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 100, "intent": 91, "band": "auto_admit", "rationale": ["Government document verified and matched to the liveness selfie."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-fc2cde61f6ce", "platform": "ios", "integrity_verdict": "PASS", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"2e24438a-98ef-4a2c-8ba0-e835a6384f29": 1.0, "eef4abbf-8b3f-461f-ac79-c93a5075d101": 1.0}, "threshold": 0.62, "mismatched": []}}, {"type": "duplicate_face", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"matches": [], "threshold": 0.78}}, {"type": "intent", "result": "pass", "score": 0.819, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"bio_length": 322, "photo_count": 2, "fields_filled": 3}}, {"type": "consistency", "result": "pass", "score": 0.9, "vendor": "mock-llm", "cost_usd": 0.02, "duration_ms": 0, "details": {"intent": "marriage_seeking", "intent_confidence": 0.9, "contradictions": [], "scam_signals": [], "effort": 0.81, "language": "en"}}, {"type": "reverse_image", "result": "pass", "score": 1.0, "vendor": "mock-reverse-image", "cost_usd": 0.03, "duration_ms": 0, "details": {"matches": []}}, {"type": "document", "result": "pass", "score": 0.94, "vendor": "mock-document", "cost_usd": 1.6, "duration_ms": 0, "details": {"fields": {"full_name": "REDACTED", "expiry": "2031-04-18", "document_type": "national_id", "issuing_country": "PS", "date_of_birth": "1994-03-11"}, "face_match_score": 0.91}}], "findings": [], "run": {"run_id": "c0406c88-433f-4c4f-a2ab-6c04d647592b", "agent_version": "verify-1.0.0", "cost_usd": 1.93, "short_circuited_on": null}, "duplicate_accounts": [], "prior_reports": 0}, {"name": "genuine_woman", "queue": "عيّنة تدقيق", "in_queue": false, "waiting_since": "2026-09-22T15:52:15.068836+00:00", "applicant": {"display_name": "أميرة", "age": 28, "gender": "female", "city": "رام الله", "country": "PS", "tier": "bronze", "marital_status": "never_married", "children_count": 0, "occupation": "Pharmacist", "education": "BSc Pharmacy, Birzeit University", "timeline": "within_1_year", "family_aware": true, "bio": "خريجة صيدلة من جامعة بيرزيت وبشتغل بصيدلية بالبيرة من ثلاث سنين. عيلتي عارفة إني مسجلة هون وبابا هو الولي. بدور على إنسان متدين، محترم، وجاد بموضوع الزواج خلال السنة الجاية. بحب القراءة والمشي، وبفضل نسكن قريب من العيلة بعد الزواج إن شاء الله.", "photo_count": 3, "phone_masked": "+9705••••••56"}, "device": {"fingerprint": "fp-9183d07f22d8", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}, "trust": {"identity": 98, "intent": 91, "band": "auto_admit", "rationale": ["All checks passed; no finding above low severity."]}, "checks": [{"type": "device", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.01, "duration_ms": 0, "details": {"fingerprint": "fp-9183d07f22d8", "platform": "android", "integrity_verdict": "MEETS_DEVICE_INTEGRITY", "is_emulator": false, "is_rooted": false, "vpn_detected": false, "install_id_seen_count": 1}}, {"type": "phone", "result": "pass", "score": 0.95, "vendor": "mock-phone-intel", "cost_usd": 0.02, "duration_ms": 0, "details": {"line_type": "mobile", "carrier": "Jawwal", "country": "PS", "disposable": false, "risk": 0.05}}, {"type": "scam_pattern", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"hits": {}}}, {"type": "liveness", "result": "pass", "score": 0.96, "vendor": "mock-liveness", "cost_usd": 0.25, "duration_ms": 0, "details": {"challenge": null}}, {"type": "face_match", "result": "pass", "score": 0.9999999999999998, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"per_photo": {"d7e8403f-0f97-4739-942e-d7ef7bd25d7c": 0.9999999999999998, "67fadb0a-966c-4340-8dc2-72e82043ceae": 0.9999999999999998, "800a9fca-b00c-4fe2-9ee1-eb3594777564": 0.9999999999999998}, "threshold": 0.62, "mismatched": []}}, {"type": "duplicate_face", "result": "pass", "score": 1.0, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"matches": [], "threshold": 0.78}}, {"type": "intent", "result": "pass", "score": 0.804, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {"bio_length": 243, "photo_count": 3, "fields_filled": 3}}, {"type": "consistency", "result": "pass", "score": 0.9, "vendor": "mock-llm", "cost_usd": 0.02, "duration_ms": 0, "details": {"intent": "marriage_seeking", "intent_confidence": 0.9, "contradictions": [], "scam_signals": [], "effort": 0.61, "language": "ar"}}, {"type": "reverse_image", "result": "pass", "score": 1.0, "vendor": "mock-reverse-image", "cost_usd": 0.03, "duration_ms": 0, "details": {"matches": []}}, {"type": "document", "result": "skipped", "score": null, "vendor": null, "cost_usd": 0.0, "duration_ms": 0, "details": {}}], "findings": [], "run": {"run_id": "4df74a38-8885-46f3-bd75-f8b52aa54a13", "agent_version": "verify-1.0.0", "cost_usd": 0.33, "short_circuited_on": null}, "duplicate_accounts": [], "prior_reports": 0}]};
+const CASES = DATA.cases;
+const decisions = new Map();
+
+const SEV_RANK = { critical: 3, high: 2, medium: 1, low: 0 };
+
+const BAND_PILL = {
+  auto_reject: ["pill-bad",  "المحرّك يرفض"],
+  review:      ["pill-warn", "يحتاج قراراً"],
+  auto_admit:  ["pill-ok",   "المحرّك يقبل"],
+};
+
+const CHECK_LABEL = {
+  phone: "الهاتف", device: "الجهاز", liveness: "الصورة الحيّة",
+  face_match: "مطابقة الوجه", duplicate_face: "حساب مكرّر",
+  reverse_image: "بحث عكسي عن الصورة", document: "الهوية",
+  consistency: "اتساق الملف", intent: "الجدية", scam_pattern: "أنماط احتيال",
+};
+
+const RESULT_LABEL = {
+  pass: "نجح", fail: "فشل", inconclusive: "غير حاسم",
+  skipped: "لم يُنفَّذ", error: "تعذّر",
+};
+
+const MARITAL = { never_married: "أعزب", divorced: "مطلّق", widowed: "أرمل" };
+const TIMELINE = {
+  within_6_months: "خلال 6 شهور", within_1_year: "خلال سنة",
+  within_2_years: "خلال سنتين", when_right_person: "عند الشخص المناسب",
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, m =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+}
+
+function waited(iso) {
+  const h = (Date.now() - new Date(iso).getTime()) / 36e5;
+  if (h < 1) return "الآن";
+  if (h < 24) return `${Math.round(h)} ساعة`;
+  return `${Math.round(h / 24)} يوم`;
+}
+
+function isArabic(s) { return /[؀-ۿ]/.test(s || ""); }
+
+function severityOf(c) {
+  const flags = c.kind === "photo_request" ? c.flags : c.findings;
+  if (!flags || !flags.length) return "ok";
+  const worst = Math.max(...flags.map(f => SEV_RANK[f.severity] ?? 0));
+  return worst >= 2 ? "bad" : worst === 1 ? "warn" : "ok";
+}
+
+function titleOf(c) {
+  if (c.kind === "photo_request") return `${c.requester.display_name}، ${c.requester.age}`;
+  if (c.kind === "meeting") return c.pair.join(" و ");
+  return `${c.applicant.display_name}، ${c.applicant.age}`;
+}
+
+function subtitleOf(c) {
+  if (c.kind === "photo_request") return `يطلب رؤية صور ${c.owner.display_name}`;
+  if (c.kind === "meeting") return `${c.city} · ترتيب موعد`;
+  return c.applicant.city || c.applicant.country;
+}
+
+// ------------------------------------------------------------------ //
+
+function renderRail() {
+  const groups = [
+    ["طلبات رؤية الصور", "الأهم في اليوم: قرار خاطئ هنا يكشف وجهاً بلا إذن، أو يُتعب صاحبته بطلب لا يستحق أن يصلها.", c => c.queue === "طلب رؤية صور"],
+    ["ترتيب اللقاءات", "وافق الطرفان. يبقى حجز الغرفة.", c => c.queue === "ترتيب لقاء"],
+    ["الاعتراضات وطلبات الانضمام", "بعد البلاغات وطلبات الصور.", c => c.in_queue && ["اعتراض", "طلب انضمام على الحدّ"].includes(c.queue)],
+    ["عيّنة تدقيق", "2–5٪ من القبول التلقائي، تُراجَع يدوياً. هكذا نكتشف انحراف المحرّك.", c => !c.in_queue],
+  ];
+
+  const item = c => `
+    <button class="case-btn" data-name="${esc(c.name)}" aria-current="false">
+      <span class="case-row">
+        <span class="sev sev-${severityOf(c)}"></span>
+        <span class="case-name">${esc(titleOf(c))}</span>
+        <span class="case-wait">${decisions.has(c.name) ? "تمّ" : waited(c.waiting_since)}</span>
+      </span>
+      <span class="case-sub">${esc(subtitleOf(c))}</span>
+    </button>`;
+
+  document.getElementById("rail").innerHTML = groups.map(([title, note, pred]) => {
+    const rows = CASES.filter(pred);
+    if (!rows.length) return "";
+    return `<div class="rail-group"><h2>${title}</h2><p>${note}</p></div>` + rows.map(item).join("");
+  }).join("");
+
+  document.querySelectorAll(".case-btn").forEach(b =>
+    b.addEventListener("click", () => select(b.dataset.name)));
+}
+
+function renderStats() {
+  const queued = CASES.filter(c => c.in_queue);
+  const oldest = queued.reduce((a, c) =>
+    Math.max(a, (Date.now() - new Date(c.waiting_since)) / 36e5), 0);
+  const cost = CASES.filter(c => c.run).reduce((a, c) => a + c.run.cost_usd, 0);
+
+  document.getElementById("stat-queue").textContent = queued.length;
+  document.getElementById("stat-oldest").textContent = `${Math.round(oldest)} ساعة`;
+  document.getElementById("stat-photo").textContent =
+    CASES.filter(c => c.kind === "photo_request").length;
+  document.getElementById("stat-cost").textContent = "$" + cost.toFixed(2);
+}
+
+// ------------------------------------------------------------------ //
+// A photo request. The reviewer is not deciding whether she says yes —
+// that is hers alone. The only question here is whether this request
+// deserves to reach her at all.
+// ------------------------------------------------------------------ //
+
+function renderPhotoRequest(c) {
+  const r = c.requester;
+  const sorted = [...c.flags].sort((a, b) => (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0));
+  const serial = r.requests_last_30d >= 8;
+
+  return `
+    <div class="packet-head">
+      <div style="min-width:0">
+        <h1>${esc(r.display_name)}، ${r.age} — يطلب رؤية صور ${esc(c.owner.display_name)}</h1>
+        <div class="meta">${esc(r.city)} · منتظر منذ ${waited(c.waiting_since)}</div>
+      </div>
+      <span class="pill ${serial || r.reports_against ? "pill-bad" : "pill-warn"}"
+            style="margin-inline-start:auto">
+        ${serial || r.reports_against ? "يستحق الحجب" : "يحتاج قراراً"}
+      </span>
+    </div>
+
+    ${decisions.has(c.name) ? `<div class="logged"><b>${esc(decisions.get(c.name))}</b> — سُجِّل القرار.</div>` : ""}
+
+    <section class="block">
+      <h2>من يطلب</h2>
+      <div class="who">
+        <div class="who-main">
+          <div class="who-name">${esc(r.display_name)}، ${r.age}</div>
+          <div style="color:var(--ink-3);font-size:13.5px">
+            ${esc(r.city)} · ${r.document_verified ? "هوية موثّقة" : "بلا توثيق هوية"}
+          </div>
+          <div class="history">
+            <div class="hist ${r.reports_against ? "alarm" : ""}">
+              <b>${r.reports_against}</b><span>بلاغات ضدّه</span>
+            </div>
+            <div class="hist ${serial ? "alarm" : ""}">
+              <b>${r.requests_last_30d}</b><span>طلب خلال 30 يوماً</span>
+            </div>
+            <div class="hist"><b>${r.approved_before}</b><span>قُبل من قبل</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="block-note">
+        عدد الطلبات هو أوضح إشارة هنا: من يرسل طلباً لكل من يظهر أمامه لا يبحث عن زوجة.
+      </p>
+    </section>
+
+    ${r.note ? `<section class="block">
+      <h2>الكلمة التي أرفقها</h2>
+      <div class="bio ${isArabic(r.note) ? "" : "ltr-body"}">${esc(r.note)}</div>
+    </section>` : ""}
+
+    ${sorted.length ? `<section class="block">
+      <h2>ما يستدعي الانتباه</h2>
+      ${sorted.map(f => `
+        <div class="finding f-${f.severity}">
+          <div class="finding-bar"></div>
+          <div style="min-width:0"><div class="finding-detail">${esc(f.detail)}</div></div>
+        </div>`).join("")}
+    </section>` : ""}
+
+    <section class="block">
+      <h2>صاحبة الصور</h2>
+      <dl class="facts">
+        <div class="fact"><dt>الاسم</dt><dd>${esc(c.owner.display_name)}، ${c.owner.age}</dd></div>
+        <div class="fact"><dt>المدينة</dt><dd>${esc(c.owner.city)}</dd></div>
+      </dl>
+      <p class="block-note">
+        لا نعرض صورها هنا. المراجع لا يحتاج أن يراها ليقرّر، والقرار بكشفها قرارها وحدها.
+      </p>
+    </section>
+
+    <div class="decide">
+      <button class="act primary" data-action="مُرِّر الطلب إليها">تمرير الطلب إليها</button>
+      <button class="act destructive" data-action="حُجب الطلب ولم يصلها">حجب الطلب</button>
+      <span class="decide-note">الطلب المحجوب لا يصلها إطلاقاً، ولا يُبلَّغ صاحبه بالسبب.</span>
+    </div>`;
+}
+
+// ------------------------------------------------------------------ //
+// A meeting. Both sides already agreed; the reviewer books the room.
+// ------------------------------------------------------------------ //
+
+function renderMeeting(c) {
+  return `
+    <div class="packet-head">
+      <div style="min-width:0">
+        <h1>${esc(c.pair.join(" و "))}</h1>
+        <div class="meta">${esc(c.city)} · وافق الطرفان · منتظر منذ ${waited(c.waiting_since)}</div>
+      </div>
+      <span class="pill pill-ok" style="margin-inline-start:auto">بانتظار غرفة</span>
+    </div>
+
+    ${decisions.has(c.name) ? `<div class="logged"><b>${esc(decisions.get(c.name))}</b> — سُجِّل القرار.</div>` : ""}
+
+    <section class="block">
+      <h2>ترتيبات الغرفة</h2>
+      <dl class="facts">
+        <div class="fact"><dt>الحضور</dt><dd>${esc(c.pair.join("، "))}</dd></div>
+        <div class="fact"><dt>العائلات</dt><dd>${c.families_attending ? "الطرفان يحضران مع أهلهما" : "بلا مرافقين"}</dd></div>
+        <div class="fact"><dt>عدد الكراسي</dt><dd>${c.families_attending ? "6" : "3"}</dd></div>
+      </dl>
+      <p class="block-note">
+        الكرسي الثالث للموظّف. حضور العائلات يغيّر ترتيب الغرفة، ولهذا نسأل عنه عند الموافقة.
+      </p>
+    </section>
+
+    <section class="block">
+      <h2>المواعيد المتاحة</h2>
+      ${c.slots.map((s, i) => `
+        <label class="slot">
+          <input type="radio" name="slot" value="${i}" ${i === 0 ? "checked" : ""}>
+          <span>
+            <span class="slot-when">${esc(s.when)}</span><br>
+            <span class="slot-where">${esc(s.office)} · ${esc(s.room)} · ${esc(s.staff)}</span>
+          </span>
+        </label>`).join("")}
+      <p class="block-note">
+        الطرفان لا يريان جدول المكتب. لو رأياه لعرف كلٌّ منهما من يلتقي بمن ومتى.
+      </p>
+    </section>
+
+    <div class="decide">
+      <button class="act primary" data-action="حُجزت الغرفة وأُبلغ الطرفان">تثبيت الموعد</button>
+      <button class="act" data-action="طُلب موعد آخر">لا يوجد موعد مناسب</button>
+      <span class="decide-note">يُبلَّغ الطرفان بالموعد والعنوان فور التثبيت.</span>
+    </div>`;
+}
+
+// ------------------------------------------------------------------ //
+// An admission. Evidence first; the engine's opinion last and folded away.
+// ------------------------------------------------------------------ //
+
+function renderAdmission(c) {
+  const a = c.applicant;
+  const [pillClass, pillText] = BAND_PILL[c.trust.band];
+  const sorted = [...c.findings].sort((x, y) => (SEV_RANK[y.severity] ?? 0) - (SEV_RANK[x.severity] ?? 0));
+  const faceScores = Object.values(c.checks.find(k => k.type === "face_match")?.details?.per_photo || {});
+
+  return `
+    <div class="packet-head">
+      <div style="min-width:0">
+        <h1>${esc(a.display_name)}، ${a.age}</h1>
+        <div class="meta">
+          ${esc(a.city || "—")} · ${a.gender === "female" ? "امرأة" : "رجل"} ·
+          اشتراك ${a.tier === "gold" ? "ذهبي" : "مجاني"} ·
+          منتظر منذ ${waited(c.waiting_since)} ·
+          <span class="ltr">${esc(a.phone_masked)}</span>
+        </div>
+      </div>
+      <span class="pill ${pillClass}" style="margin-inline-start:auto">${pillText}</span>
+    </div>
+
+    ${decisions.has(c.name) ? `<div class="logged"><b>${esc(decisions.get(c.name))}</b> — سُجِّل القرار في سجل لا يقبل التعديل.</div>` : ""}
+
+    <section class="block">
+      <h2>ما رفعه</h2>
+      <div class="photo-strip">
+        <div class="photo live"><small>صورة حيّة</small></div>
+        ${Array.from({ length: a.photo_count }, (_, i) => {
+          const s = faceScores[i];
+          return `<div class="photo"><small>صورة ${i + 1}${s != null ? ` · <span class="num">${s.toFixed(2)}</span>` : ""}</small></div>`;
+        }).join("")}
+      </div>
+      <p class="block-note">درجة التطابق مع الصورة الحيّة. تحت 0.62 لا تكون الصورة له.</p>
+    </section>
+
+    ${a.bio ? `<section class="block">
+      <h2>بكلماته</h2>
+      <div class="bio ${isArabic(a.bio) ? "" : "ltr-body"}">${esc(a.bio)}</div>
+    </section>` : ""}
+
+    <section class="block">
+      <h2>ما صرّح به</h2>
+      <dl class="facts">
+        <div class="fact"><dt>الحالة</dt><dd>${MARITAL[a.marital_status] || a.marital_status}</dd></div>
+        <div class="fact"><dt>الأبناء</dt><dd>${a.children_count}</dd></div>
+        <div class="fact"><dt>الإطار الزمني</dt><dd>${TIMELINE[a.timeline] || a.timeline}</dd></div>
+        <div class="fact"><dt>العائلة على علم</dt><dd>${a.family_aware ? "نعم" : "لا"}</dd></div>
+        <div class="fact"><dt>العمل</dt><dd>${esc(a.occupation || "—")}</dd></div>
+      </dl>
+    </section>
+
+    <section class="block">
+      <h2>ما رصده المحرّك${sorted.length ? ` · ${sorted.length}` : ""}</h2>
+      ${sorted.length ? sorted.map(f => `
+        <div class="finding f-${f.severity}">
+          <div class="finding-bar"></div>
+          <div style="min-width:0">
+            <div class="finding-code">${esc(f.code)} · ${esc(CHECK_LABEL[f.check] || f.check)}</div>
+            <div class="finding-detail">${esc(f.detail)}</div>
+            ${f.quote ? `<blockquote class="quote">${esc(f.quote)}</blockquote>` : ""}
+          </div>
+        </div>`).join("")
+      : `<p style="margin:0;color:var(--ink-3)">لا شيء. هذه الحالة ضمن عيّنة التدقيق.</p>`}
+    </section>
+
+    <section class="block">
+      <h2>الفحوص</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>الفحص</th><th>النتيجة</th><th>الدرجة</th><th>الزمن</th><th>الكلفة</th></tr></thead>
+          <tbody>
+            ${c.checks.map(k => `<tr>
+              <td>${esc(CHECK_LABEL[k.type] || k.type)}</td>
+              <td><span class="dot d-${k.result}"></span>${RESULT_LABEL[k.result] || k.result}</td>
+              <td class="num">${k.score == null ? "—" : k.score.toFixed(2)}</td>
+              <td class="num">${k.duration_ms}ms</td>
+              <td class="num">${k.cost_usd ? "$" + k.cost_usd.toFixed(2) : "—"}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="block-note">
+        ${c.run.short_circuited_on
+          ? `توقّف بعد <span class="ltr">${esc(c.run.short_circuited_on)}</span> — لا فحص لاحق كان ليغيّر النتيجة. الكلفة <span class="num">$${c.run.cost_usd.toFixed(2)}</span>.`
+          : `نُفِّذت كل الفحوص. الكلفة <span class="num">$${c.run.cost_usd.toFixed(2)}</span>.`}
+      </p>
+    </section>
+
+    ${c.device ? `<section class="block">
+      <h2>الجهاز والهاتف</h2>
+      <dl class="facts">
+        <div class="fact"><dt>النظام</dt><dd><span class="ltr">${esc(c.device.platform)}</span></dd></div>
+        <div class="fact"><dt>شهادة النظام</dt><dd><span class="ltr">${esc(c.device.integrity_verdict || "—")}</span></dd></div>
+        <div class="fact"><dt>محاكي</dt><dd>${c.device.is_emulator ? "نعم" : "لا"}</dd></div>
+        <div class="fact"><dt>حسابات من هذا الجهاز</dt><dd>${c.device.install_id_seen_count}</dd></div>
+      </dl>
+    </section>` : ""}
+
+    <details class="recommendation">
+      <summary>اعرض توصية المحرّك ودرجاته</summary>
+      <div class="rec-body">
+        <div class="scores">
+          <div>
+            <div class="score-label">ثقة الهوية</div>
+            <div class="score-value">${c.trust.identity}</div>
+            <div class="meter"><i style="width:${c.trust.identity}%"></i></div>
+          </div>
+          <div>
+            <div class="score-label">ثقة الجدية</div>
+            <div class="score-value">${c.trust.intent}</div>
+            <div class="meter"><i style="width:${c.trust.intent}%"></i></div>
+          </div>
+        </div>
+        <ul class="rationale">${c.trust.rationale.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+        <p class="block-note">
+          تُعرَض أخيراً عن قصد. من يقرأ الدرجة أولاً يتوقف عن قراءة الأدلة.
+        </p>
+      </div>
+    </details>
+
+    <div class="decide">
+      <button class="act primary" data-action="قُبل">قبول</button>
+      <button class="act" data-action="طُلبت أدلة إضافية">طلب أدلة إضافية</button>
+      <button class="act" data-action="حُدَّ الحساب مؤقتاً">تقييد مؤقت</button>
+      <button class="act destructive" data-action="رُفض">رفض</button>
+      <button class="act destructive" data-action="حُظر الجهاز والهاتف والوجه">حظر</button>
+      <span class="decide-note">كل قرار يُسجَّل ولا يمكن تعديله لاحقاً.</span>
+    </div>`;
+}
+
+// ------------------------------------------------------------------ //
+
+function select(name) {
+  const c = CASES.find(x => x.name === name);
+  if (!c) return;
+
+  document.querySelectorAll(".case-btn").forEach(b =>
+    b.setAttribute("aria-current", String(b.dataset.name === name)));
+
+  const packet = document.getElementById("packet");
+  packet.innerHTML =
+    c.kind === "photo_request" ? renderPhotoRequest(c)
+    : c.kind === "meeting"     ? renderMeeting(c)
+    : renderAdmission(c);
+
+  packet.querySelectorAll("button.act").forEach(b =>
+    b.addEventListener("click", () => {
+      decisions.set(name, b.dataset.action);
+      renderRail();
+      select(name);
+    }));
+}
+
+renderStats();
+renderRail();
+select(CASES[0].name);
+</script>
