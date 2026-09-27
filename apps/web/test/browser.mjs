@@ -1136,6 +1136,87 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   fs.unlinkSync(path.join(ROOT, 'config.js'));
 }
 
+// ---------- 12. the failures that turned the app into a demo ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const blocked = [];
+  page.on('console', (m) => {
+    if (/Content Security Policy|Refused to load/i.test(m.text())) blocked.push(m.text());
+  });
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-m', email: 'm@example.com' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-m', email: 'm@example.com', is_admin: false,
+                    has_credential: true, is_anonymous: false, has_row: true });
+    }
+    // The single failing read that used to disable everything.
+    if (url.includes('/rpc/my_application')) {
+      return json({ code: 'PGRST202', message: 'function does not exist' }, 404);
+    }
+    if (url.includes('/rpc/my_photo_requests')) return json([]);
+    if (url.includes('/rpc/my_photo_grants')) return json([]);
+    if (url.includes('/rpc/my_matches')) return json([]);
+    if (url.includes('/rpc/my_meetings')) return json([]);
+    if (url.includes('/rpc/my_profile')) {
+      return json({ user_id: 'u-m', status: 'admitted', display_name: 'حموده',
+                    photos: [{ id: 'p1', storage_path: 'u-m/a.jpg', ordinal: 0,
+                               is_primary: true, approved: false }] });
+    }
+    if (url.includes('/storage/v1/object/sign/')) {
+      return json({ signedURL: '/object/sign/photos/u-m/a.jpg?token=abc' });
+    }
+    if (url.includes('/rpc/browse_members')) return json({ gated: false, status: 'admitted', rows: [] });
+    return json({}, 404);
+  });
+  await page.route('**/object/sign/photos/**', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+  });
+
+  await page.goto(`${base}/#/photos`);
+  await page.waitForTimeout(1200);
+
+  const state = await page.evaluate(() => window.nasib?.state);
+  check(state?.db === 'connected',
+        'one failed read does not turn the whole app into a demo');
+  check(!!state?.startupError, 'but it is recorded, so the cause is findable');
+
+  const photos = await page.locator('#app').innerText();
+  check(!photos.includes('يوسف'), 'the photos screen shows real data, not the fixture');
+  check(photos.includes('لا توجد طلبات الآن'), 'an empty list says it is empty');
+
+  await page.goto(`${base}/#/chat`);
+  await page.waitForTimeout(900);
+  const chat = await page.locator('#app').innerText();
+  check(!chat.includes('الوليّ يطّلع على المحادثة') || chat.includes('لا محادثات بعد'),
+        'the chat screen shows the real (empty) match list, not the fixture thread');
+
+  await page.goto(`${base}/#/meeting`);
+  await page.waitForTimeout(900);
+  const meeting = await page.locator('#app').innerText();
+  check(!meeting.includes('مكتب رام الله'), 'the meeting screen is not the fixture either');
+  check(meeting.includes('لا لقاء مقترحاً'), 'it says there is no meeting');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
 await browser.close();
 server.close();
 console.log(fails.length ? `\n${fails.length} FAILED` : '\nall smoke checks passed');

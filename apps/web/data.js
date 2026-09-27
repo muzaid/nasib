@@ -450,6 +450,41 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     },
 
     /**
+     * A photo, as a `data:` URL the page can put in an <img>.
+     *
+     * Not the signed URL itself, and that is the point. A signed URL
+     * points at the Supabase host, so an <img> using it is governed by
+     * the page's `img-src` policy — a different rule from `connect-src`,
+     * which governs fetch(). On a deployment whose Content-Security-
+     * Policy allows the host for one and not the other, every photo is
+     * silently refused by the browser while every request in the console
+     * succeeds. That happened here, and it wasted a day.
+     *
+     * Fetching the bytes and inlining them sidesteps the question: the
+     * request is a fetch, and the result is a `data:` URL, which every
+     * policy this app has ever had allows. It costs a base64 copy in
+     * memory, for images that are a few hundred kilobytes and are
+     * released when the screen is replaced.
+     */
+    async photoDataUrl(path, seconds = 600) {
+      const url = await this.signedUrl(path, seconds);
+      if (!url) return "";
+      try {
+        const res = await http(url);
+        if (!res.ok) return "";
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return "";
+      }
+    },
+
+    /**
      * A URL for a private object, valid for `seconds`.
      *
      * The bucket is private, so there is no permanent URL to hold — which

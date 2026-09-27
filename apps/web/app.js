@@ -118,6 +118,7 @@ const state = {
   memberId: '',
   gate: '',
   missingRoute: '',
+  startupError: '',
   loginMode: 'signin',
   isAdmin: false,
   userId: '',
@@ -1096,11 +1097,11 @@ screens.profile = () => {
 function wireProfile() {
   if (!state.db) return;
 
-  // Signed URLs, one per photo, fetched after the screen is on the page.
-  // The bucket is private and these expire, so there is nothing to cache
-  // and no URL worth holding on to.
-  for (const img of document.querySelectorAll('img[data-signed]')) {
-    state.db.signedUrl(img.dataset.signed)
+  // The photos on this screen. `render` does the same for every screen,
+  // so this exists only for the case where wireProfile runs without a
+  // fresh render; both skip anything that already has a src.
+  for (const img of document.querySelectorAll('img[data-signed]:not([src])')) {
+    state.db.photoDataUrl(img.dataset.signed)
       .then((url) => { if (url) img.src = url; })
       .catch(() => {});
   }
@@ -2266,11 +2267,11 @@ function render(name) {
   // numbers are fetched once and shared rather than per screen.
   if (name.startsWith('admin') || name === 'member') fetchOnce('stats', loadStats);
 
-  // Signed URLs for any veiled photo on the page. Private bucket, short
-  // expiry — nothing here is worth caching.
+  // Photos for any veiled cell on the page. Inlined rather than linked —
+  // see photoDataUrl for why the signed URL cannot go straight into src.
   if (state.db) {
     for (const img of document.querySelectorAll('img[data-signed]:not([src])')) {
-      state.db.signedUrl(img.dataset.signed)
+      state.db.photoDataUrl(img.dataset.signed)
         .then((url) => { if (url) img.src = url; })
         .catch(() => {});
     }
@@ -2278,33 +2279,49 @@ function render(name) {
 }
 
 /**
- * Fetch for a screen at most once, then repaint it.
+ * Fetch a screen's data, at most once every FRESH_MS, then repaint it.
  *
  * The guard is a record of *having fetched*, not a truthiness test on the
  * result. That distinction cost a live site: the profile screen guarded
  * on `!state.profile`, and `my_profile()` returns null for a visitor who
  * has not applied. Null is falsy, so the guard never closed — every
  * render started a fetch, every fetch triggered a render, and the screen
- * sat on "loading…" issuing about five requests a second at the database
- * for as long as it was open.
+ * sat on "loading…" issuing about five requests a second at the database.
  *
- * A falsy answer is still an answer. Anything that should be re-read
- * later says so explicitly, by calling `invalidate`.
+ * Caching it for the whole session was the opposite mistake, and it
+ * showed the same way: a reviewer approved a photo and the member's own
+ * screen went on saying "قيد المراجعة", because it had read that answer
+ * once and would never read it again. Almost everything here is changed
+ * by somebody else — a reviewer, the other party, an admission — so an
+ * answer held forever is an answer that goes wrong.
+ *
+ * A minute is long enough to stop the render-fetch loop this guard exists
+ * for, and short enough that returning to a screen shows what changed.
+ *
+ * `screen` is separate from `key` because one screen can have several
+ * keys: the chat thread is keyed by match id, and repainting "chat" is
+ * not the same as repainting "thread:abc123". Without it the thread
+ * loaded and never appeared.
  */
-const fetched = new Set();
+const FRESH_MS = 60_000;
+const fetched = new Map();
 
-function fetchOnce(key, load) {
-  if (!state.db || fetched.has(key)) return;
-  fetched.add(key);
+function fetchOnce(key, load, screen = key) {
+  if (!state.db) return;
+  const at = fetched.get(key);
+  if (at && Date.now() - at < FRESH_MS) return;
+  fetched.set(key, Date.now());
+
   load()
     .catch((error) => console.warn(`[nasib] ${key}:`, error.message))
-    // The key is the screen name, so this also covers the case where the
-    // person navigated away while the request was in flight.
-    // `stats` is shared across the desk rather than being a screen of
-    // its own, so it repaints whatever is showing.
     .finally(() => {
-      if (key === 'stats') { if (current().startsWith('admin') || current() === 'member') render(current()); }
-      else if (current() === key) render(key);
+      // `stats` is shared across the desk rather than being a screen of
+      // its own, so it repaints whatever is showing.
+      if (key === 'stats') {
+        if (current().startsWith('admin') || current() === 'member') render(current());
+      } else if (current() === screen) {
+        render(screen);
+      }
     });
 }
 
@@ -3103,11 +3120,22 @@ render(location.hash.slice(2) || 'welcome');
       return;
     }
   } catch (error) {
-    // A misconfigured project, anonymous sign-ins left off, or no network.
-    // None of that should take the site down: it falls back to the demo,
-    // and the console says why for whoever deployed it.
-    console.warn('[nasib] running without a backend:', error.message);
-    state.db = null;
+    // Only a failure to establish a SESSION means there is no backend.
+    //
+    // This used to null `state.db` for any error at all, which turned a
+    // single failed read — one missing function, one transient 500 — into
+    // "every screen shows fixtures". That is the worst possible response
+    // to a small problem: the app silently becomes a demo, and the person
+    // using it reports that the data is fake rather than that a call
+    // failed. Anything else is logged and left to the screen that asked
+    // for it, each of which already handles its own failure.
+    const fatal = /not signed in|Anonymous sign-ins|تحديد الحساب|الاتصال بالخادم/.test(
+      error.message || '');
+
+    console.warn(`[nasib] ${fatal ? 'no backend' : 'a call failed during startup'}:`,
+                 error.message);
+    if (fatal) state.db = null;
+    state.startupError = error.message;
   }
 
   // Repaint, whatever is showing. The first render ran before connect()
@@ -3121,3 +3149,30 @@ render(location.hash.slice(2) || 'welcome');
   // there is no list.
   render(current());
 })();
+
+// A read-only window onto what the app thinks is true. There is nothing
+// secret in it — it is this browser's own state — and having it turns
+// "the data looks wrong" into a question answerable from the console
+// rather than a guess:
+//
+//   nasib.state.db          null means it is running on fixtures
+//   nasib.state.startupError  why, if something failed
+//   nasib.state.profile     what the server said about you
+window.nasib = {
+  get state() {
+    return {
+      db: state.db ? 'connected' : null,
+      startupError: state.startupError || null,
+      userId: state.userId,
+      email: state.email,
+      isAdmin: state.isAdmin,
+      application: state.application,
+      profile: state.profile,
+      matches: state.matches,
+      meetings: state.meetings,
+      myRequests: state.myRequests,
+      myGrants: state.myGrants,
+      fetched: [...fetched.keys()],
+    };
+  },
+};

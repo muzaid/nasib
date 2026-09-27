@@ -251,6 +251,15 @@ trying to get past it.
 
 ## 3. Vercel
 
+**Deploy the repository root, not `apps/web`.** Vercel reads `vercel.json`
+from the project's Root Directory, and the build that writes `config.js`
+lives at the root too. Set Root Directory to `apps/web` and neither
+applies: the site runs with default headers and whatever `config.js`
+happens to be lying there. Check which you have by fetching your own
+site's headers — `content-security-policy` should mention
+`*.supabase.co`. (There is a copy of the headers in `apps/web/vercel.json`
+so they apply either way, but the build still only runs at the root.)
+
 Import the repository at vercel.com/new. `vercel.json` already sets the
 build, so leave the framework preset on **Other** and change nothing.
 
