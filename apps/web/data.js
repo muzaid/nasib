@@ -226,6 +226,69 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
       return session;
     },
 
+    /**
+     * Create an account with an email and a password.
+     *
+     * Where the project does not require email confirmation, this returns
+     * a session and the person is signed in. Where it does, it returns a
+     * user and no token — the caller has to say so rather than appearing
+     * to have signed them in.
+     */
+    async signUpWithPassword(email, password) {
+      const payload = await authCall("signup", {
+        email: String(email || "").trim(),
+        password: String(password || ""),
+      });
+      if (!payload?.access_token) {
+        return { needsConfirmation: true, email: payload?.email || email };
+      }
+      writeSession(stamp(payload));
+      return { needsConfirmation: false, session };
+    },
+
+    /**
+     * Give the current anonymous session an email and a password,
+     * keeping the same account.
+     *
+     * This is the one that matters for anyone who has already used the
+     * site: it turns the identity they have been carrying in this
+     * browser into one they can sign back into, without abandoning the
+     * application, the photos or the status attached to it. Signing up
+     * fresh instead would leave all of that behind on an id nobody can
+     * reach.
+     */
+    async linkEmailPassword(email, password) {
+      const s = await signIn();
+      const res = await http(`${base}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          apikey: key,
+          authorization: `Bearer ${s.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          email: String(email || "").trim(),
+          password: String(password || ""),
+        }),
+      });
+      const payload = await readBody(res);
+      if (!res.ok) {
+        throw new DataError(authMessage(res.status, payload), { status: res.status });
+      }
+      // The token still says `is_anonymous`, and its claims are fixed at
+      // issue time. Refreshing gets one that does not — and the database
+      // check reads the row rather than the claim, so the person is not
+      // blocked either way.
+      try {
+        if (session?.refresh_token) {
+          writeSession(stamp(await authCall("token?grant_type=refresh_token", {
+            refresh_token: session.refresh_token,
+          })));
+        }
+      } catch { /* the old token still works; it just looks anonymous */ }
+      return payload;
+    },
+
     /** Sign out, dropping back to a fresh anonymous session on next use. */
     async signOut() {
       const held = session;
@@ -357,8 +420,13 @@ async function readBody(res) {
 // kept on the error for anyone reading the console.
 function authMessage(status, payload) {
   const code = payload?.error_code || payload?.error || "";
-  if (code === "invalid_credentials" || status === 400) {
-    return "البريد أو كلمة المرور غير صحيحة.";
+
+  if (code === "user_already_exists" || code === "email_exists"
+      || /already registered|already been registered/i.test(JSON.stringify(payload || {}))) {
+    return "هذا البريد مستخدم بالفعل. سجّل الدخول به بدلاً من إنشاء حساب.";
+  }
+  if (code === "weak_password" || /password should be at least/i.test(JSON.stringify(payload || {}))) {
+    return "كلمة المرور قصيرة. استخدم ٦ أحرف أو أكثر.";
   }
   if (code === "email_not_confirmed") {
     return "لم يُفعّل هذا البريد بعد. أكّده من لوحة Supabase أو من رسالة التفعيل.";
@@ -366,6 +434,7 @@ function authMessage(status, payload) {
   if (status === 422 && /anonymous/i.test(JSON.stringify(payload || {}))) {
     return "الدخول المجهول غير مفعّل في هذا المشروع.";
   }
+  if (code === "invalid_credentials") return "البريد أو كلمة المرور غير صحيحة.";
   if (status === 429) return "محاولات كثيرة. انتظر دقيقة وحاول مرة أخرى.";
   return payload?.msg || payload?.message || `تعذّر الاتصال بالخادم (${status}${code ? " " + code : ""}).`;
 }

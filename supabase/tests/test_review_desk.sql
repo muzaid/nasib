@@ -14,7 +14,9 @@
 \set her   '''d0000000-0000-0000-0000-00000000000d'''
 \set him   '''e0000000-0000-0000-0000-00000000000e'''
 
-insert into auth.users (id) values (:boss), (:her), (:him) on conflict do nothing;
+insert into auth.users (id, email) values
+  (:boss, 'boss@example.com'), (:her, 'laila@example.com'), (:him, 'omar2@example.com')
+on conflict (id) do update set email = excluded.email;
 
 -- Two applicants arrive through the web path, as a real one would.
 select act_as(:her);
@@ -215,7 +217,9 @@ select assert(
   'the directory carries no photo paths at all — access is granted, not listed');
 
 -- Someone still waiting sees nothing, which is the whole point of the gate.
-insert into auth.users (id) values ('f0000000-0000-0000-0000-00000000000f') on conflict do nothing;
+insert into auth.users (id, email) values
+  ('f0000000-0000-0000-0000-00000000000f', 'waiting@example.com')
+on conflict (id) do update set email = excluded.email;
 select act_as('f0000000-0000-0000-0000-00000000000f');
 select apply_for_membership(jsonb_build_object(
   'gender', 'male', 'date_of_birth', '1990-01-01', 'display_name', 'منتظر'));
@@ -231,8 +235,9 @@ select assert(
 -- Signed in with no application at all. This said "not signed in" to
 -- someone who was signed in, which told them to do the thing they had
 -- just done.
-insert into auth.users (id) values ('09000000-0000-0000-0000-000000000009')
-  on conflict do nothing;
+insert into auth.users (id, email) values
+  ('09000000-0000-0000-0000-000000000009', 'browsing@example.com')
+on conflict (id) do update set email = excluded.email;
 select act_as('09000000-0000-0000-0000-000000000009');
 
 select assert(
@@ -407,10 +412,42 @@ select assert(
   || ' a missing reviewer has a hole where it matters most');
 
 -- An anonymous session reports no email, which is what distinguishes the
--- two kinds of account to the screen.
-select act_as(:her);
+-- two kinds of account to the screen. Every other account in this suite
+-- has one now, because applying requires it.
+insert into auth.users (id) values ('cc000000-0000-0000-0000-0000000000cc')
+on conflict (id) do nothing;
+select act_as('cc000000-0000-0000-0000-0000000000cc');
+
 select assert((whoami() -> 'email') = 'null'::jsonb
-  and (whoami() ->> 'is_anonymous')::boolean,
+  and (whoami() ->> 'is_anonymous')::boolean
+  and (whoami() ->> 'has_credential')::boolean = false,
   'an anonymous session has no email and says so');
+
+-- And cannot leave an application behind that it could never return to.
+do $$
+declare said text := '';
+begin
+  begin
+    perform apply_for_membership(jsonb_build_object(
+      'gender', 'male', 'date_of_birth', '1990-01-01', 'display_name', 'عابر'));
+  exception when others then said := sqlerrm; end;
+  perform assert(said like '%أنشئ حساباً%',
+    'an anonymous session cannot apply — the application would be unreachable');
+end $$;
+
+select assert(
+  (select count(*) from users where id = 'cc000000-0000-0000-0000-0000000000cc') = 0,
+  'and nothing was written');
+
+-- Linking an email makes the same session able to apply, without signing
+-- out: the check reads the row, not the token's claim.
+update auth.users set email = 'linked@example.com'
+ where id = 'cc000000-0000-0000-0000-0000000000cc';
+
+select assert(
+  (apply_for_membership(jsonb_build_object(
+    'gender', 'male', 'date_of_birth', '1990-01-01', 'display_name', 'عابر'
+  )) ->> 'status') = 'applying',
+  'once an email is linked, the same session can apply');
 
 \echo '== admin login: done =='

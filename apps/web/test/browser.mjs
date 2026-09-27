@@ -415,6 +415,28 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   fs.unlinkSync(path.join(ROOT, 'config.js'));
 }
 
+// ---------- 5b. an unknown route must not be a white page ----------
+//
+// How it happened: a link to #/login opened against a deployment that
+// predated that screen. The router returned early, #app was never
+// written to, and the site showed nothing at all.
+{
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(`${base}/#/screen-that-does-not-exist`);
+  await page.waitForTimeout(500);
+
+  const text = await page.locator('#app').innerText();
+  check(text.trim().length > 0, 'an unknown route renders something, not a white page');
+  check(text.includes('لا توجد هذه الصفحة'), 'and says the screen does not exist');
+  check(text.includes('screen-that-does-not-exist'), 'naming the route that was asked for');
+
+  await page.locator('[data-go="welcome"]').click();
+  await page.waitForTimeout(400);
+  check((await page.locator('#app').innerText()).includes('نصيب'),
+        'with a way back to the start');
+  await page.close();
+}
+
 // ---------- 6. reviewer sign-in ----------
 {
   fs.writeFileSync(path.join(ROOT, 'config.js'),
@@ -481,11 +503,11 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
     return json({}, 404);
   });
 
-  await page.goto(`${base}/#/login`);
+  await page.goto(`${base}/#/staff`);
   await page.waitForTimeout(600);
-  check(errors.length === 0, `no page errors on the login screen ${errors.join('; ')}`);
-  check((await page.locator('#app').innerText()).includes('لماذا لا يوجد دخول للأعضاء'),
-        'the login screen explains why members do not sign in');
+  check(errors.length === 0, `no page errors on the reviewer login ${errors.join('; ')}`);
+  check((await page.locator('#app').innerText()).includes('هذه الشاشة لمن يراجع الطلبات'),
+        'the reviewer screen says who it is for');
 
   // Wrong password.
   await page.locator('[name="email"]').fill('boss@nasib.app');
@@ -526,6 +548,99 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   const after = await page.locator('#app').innerText();
   check(after.includes('لست مراجعاً'), 'and the desk is closed again afterwards');
   check(!after.includes('boss@nasib.app'), 'with no trace of the account that left');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 7. members sign in, and keep what they started ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  // One anonymous account that has already applied. Linking an email to
+  // it must keep the application — that is the whole point.
+  let account = { id: 'u-anon', email: null };
+  const applications = { 'u-anon': { status: 'pending_review', display_name: 'سارة' } };
+  let linkedTo = null;
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: account });
+    }
+    if (url.includes('/auth/v1/user') && method === 'PUT') {
+      // The same account gains a credential. Its id does not change.
+      account = { ...account, email: body.email };
+      linkedTo = body.email;
+      return json(account);
+    }
+    if (url.includes('grant_type=refresh_token')) {
+      return json({ access_token: 't2', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600, user: account });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: account.id, email: account.email,
+                    has_credential: !!account.email, is_anonymous: !account.email,
+                    is_admin: false, has_row: !!applications[account.id] });
+    }
+    if (url.includes('/rpc/my_application')) return json(applications[account.id] || null);
+    if (url.includes('/rpc/my_profile')) {
+      const app = applications[account.id];
+      return json(app ? { user_id: account.id, status: app.status,
+                          display_name: app.display_name, photos: [] } : null);
+    }
+    if (url.includes('/rpc/browse_members')) return json({ gated: true, status: 'none', rows: [] });
+    return json({}, 404);
+  });
+
+  await page.goto(`${base}/#/profile`);
+  await page.waitForTimeout(900);
+  check(errors.length === 0, `no page errors on the profile ${errors.join('; ')}`);
+
+  const before = await page.locator('#app').innerText();
+  check(before.includes('حسابك مرتبط بهذا المتصفح وحده'),
+        'an anonymous member is told their account is stuck to this browser');
+  check(before.includes('سارة'), 'while still showing the application they started');
+
+  await page.locator('[name="link-email"]').fill('sara@example.com');
+  await page.locator('[name="link-password"]').fill('a-good-password');
+  await page.locator('#link-submit').click();
+  await page.waitForTimeout(900);
+
+  check(linkedTo === 'sara@example.com', 'linking sends the email to the same account');
+  const after = await page.locator('#app').innerText();
+  check(after.includes('sara@example.com'), 'the profile now shows the signed-in address');
+  check(after.includes('سارة'),
+        'and the application survived — linking is not starting over');
+
+  // The member login screen exists and is not the reviewer one.
+  await page.goto(`${base}/#/login`);
+  await page.waitForTimeout(500);
+  const login = await page.locator('#app').innerText();
+  check(!login.includes('دخول المراجعين'), '/#/login is the member screen, not the reviewer one');
+  check(login.includes('ليس لديّ حساب'), 'and offers to create an account');
+
+  await page.locator('[data-login-mode="signup"]').click();
+  await page.waitForTimeout(300);
+  check((await page.locator('#app').innerText()).includes('أنشئ حسابك'),
+        'which switches the screen to creating one');
+
+  await page.goto(`${base}/#/staff`);
+  await page.waitForTimeout(500);
+  const staff = await page.locator('#app').innerText();
+  check(staff.includes('دخول المراجعين'), '/#/staff is the reviewer screen');
+  check(!staff.includes('ليس لديّ حساب'), 'and does not offer to create an account');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));

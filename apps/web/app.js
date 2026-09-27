@@ -98,6 +98,8 @@ const state = {
   queue: null,
   queueFilter: 'waiting',
   gate: '',
+  missingRoute: '',
+  loginMode: 'signin',
   isAdmin: false,
   userId: '',
   email: '',
@@ -255,6 +257,16 @@ screens.apply = () => {
       <p class="sub">${state.db
         ? 'هذه الحقول تُحفظ فعلياً، ويمكنك العودة إليها لاحقاً.'
         : 'نسخة تجريبية بلا خادم — لن يُحفظ ما تكتبه.'}</p>
+
+      ${state.db && !state.email ? `
+        <div class="panel tinted accent" style="margin-bottom:18px">
+          <p class="eyebrow">قبل أن تبدأ</p>
+          <p style="margin:0 0 10px;font-size:14px;line-height:1.85">
+            يحتاج طلبك حساباً تعود إليه — بريد وكلمة مرور. بدونه يبقى الطلب
+            مرتبطاً بهذا المتصفح وحده، ويضيع إن غيّرت الجهاز.
+          </p>
+          <button class="btn quiet" data-go="profile">أضف بريداً وكلمة مرور</button>
+        </div>` : ''}
 
       <label class="field">
         <span>الاسم كما تحبّ أن يظهر</span>
@@ -880,6 +892,37 @@ screens.profile = () => {
           ${ico.desk} <span style="margin-inline-start:8px">مكتب المراجعة</span>
         </button>` : ''}
 
+      <p class="eyebrow" style="margin-top:22px">حسابك</p>
+      <div class="panel tight">
+        ${state.email ? `
+          <div class="line-item" style="align-items:center">
+            <div style="flex:1;min-width:0">
+              <div class="tiny muted">مسجّل الدخول باسم</div>
+              <div dir="ltr" style="font-size:14.5px;text-align:right">${escapeAttr(state.email)}</div>
+            </div>
+            <button class="btn quiet" style="width:auto" data-signout>خروج</button>
+          </div>`
+        : `
+          <p style="margin:0 0 10px;font-size:14.5px;line-height:1.85">
+            حسابك مرتبط بهذا المتصفح وحده. أضف بريداً وكلمة مرور لتعود إلى طلبك
+            من أي جهاز — ولا تفقده إن مسحت بيانات الموقع.
+          </p>
+          <label class="field" style="margin-bottom:10px">
+            <span>البريد الإلكتروني</span>
+            <input type="email" name="link-email" dir="ltr" inputmode="email"
+                   autocomplete="username" placeholder="you@example.com">
+          </label>
+          <label class="field" style="margin-bottom:10px">
+            <span>كلمة المرور</span>
+            <input type="password" name="link-password" dir="ltr" autocomplete="new-password">
+          </label>
+          <div id="link-error"></div>
+          <button class="btn" id="link-submit">احفظ حسابي</button>
+          <p class="note" style="text-align:center">
+            هذا يحفظ الطلب الذي بدأته هنا، ولا ينشئ حساباً جديداً.
+          </p>`}
+      </div>
+
       <p class="eyebrow" style="margin-top:22px">معرّف حسابك</p>
       <div class="panel tight">
         <p class="tiny muted" style="margin:0 0 8px;line-height:1.8">
@@ -904,6 +947,8 @@ function wireProfile() {
       .then((url) => { if (url) img.src = url; })
       .catch(() => {});
   }
+
+  wireLinkAccount();
 
   const input = document.getElementById('photo-input');
   const errorBox = document.getElementById('photo-error');
@@ -936,6 +981,50 @@ function wireProfile() {
   });
 }
 
+/**
+ * Turn this browser's anonymous account into one with a password,
+ * keeping the same account.
+ *
+ * Deliberately not "create an account": the person already has one, with
+ * their application on it. Signing up fresh would leave all of that on an
+ * id nobody can ever reach again.
+ */
+function wireLinkAccount() {
+  const button = document.getElementById('link-submit');
+  const errorBox = document.getElementById('link-error');
+  if (!button || !state.db) return;
+
+  button.addEventListener('click', async () => {
+    const email = document.querySelector('[name="link-email"]').value.trim();
+    const password = document.querySelector('[name="link-password"]').value;
+
+    const fail = (message) => {
+      errorBox.innerHTML = `<div class="banner warn" style="margin:10px 0">${message}</div>`;
+      button.disabled = false;
+      button.textContent = 'احفظ حسابي';
+    };
+
+    if (!email || !password) return fail('أدخل البريد وكلمة المرور.');
+    if (password.length < 6) return fail('اختر كلمة مرور من ٦ أحرف أو أكثر.');
+
+    errorBox.innerHTML = '';
+    button.disabled = true;
+    button.textContent = 'جارٍ الحفظ…';
+
+    try {
+      await state.db.linkEmailPassword(email, password);
+      const me = await state.db.whoami();
+      state.email = me?.email || email;
+      invalidate('profile');
+      await loadProfile();
+      toast('حُفظ حسابك. يمكنك الدخول به من أي جهاز.');
+      render('profile');
+    } catch (error) {
+      fail(escapeAttr(error.message));
+    }
+  });
+}
+
 async function loadProfile() {
   if (!state.db) return;
   try {
@@ -953,14 +1042,17 @@ async function loadProfile() {
 // Reviewer sign-in
 // --------------------------------------------------------------------- //
 
-// Only reviewers sign in. Members do not, and the screen says why rather
-// than leaving someone hunting for an account they were never given: in
-// this product a member is identified by a verified phone number, and
-// that step is not built here yet.
-screens.login = () => `
+// Two sign-in screens, one mechanism. A reviewer is an ordinary account
+// with a row in admin_users, so the difference between these screens is
+// where they send you and what they say — not how they authenticate.
+// They are separate URLs because a member arriving at a page headed
+// "reviewers" learns something about the product that is none of their
+// business, and a reviewer wants a page that does not offer to create an
+// account.
+screens.staff = () => `
   <div class="screen">
     ${appbar('دخول المراجعين')}
-    <div class="pad" id="login-form">
+    <div class="pad" id="login-form" data-mode="signin" data-after="admin">
       <div class="center" style="margin-top:6px">${star(26)}</div>
       <h3 class="hd" style="text-align:center;margin-top:14px">دخول المراجعين</h3>
       <p class="body" style="text-align:center;font-size:14.5px;color:var(--ink-soft)">
@@ -981,16 +1073,65 @@ screens.login = () => `
       <div id="login-error"></div>
       <button class="btn" style="margin-top:6px" id="login-submit">دخول</button>
 
-      <div class="panel tinted accent" style="margin-top:22px">
-        <p class="eyebrow">لماذا لا يوجد دخول للأعضاء</p>
-        <p style="margin:0;font-size:14px;line-height:1.85">
-          العضو في هذا التطبيق يُعرَّف برقم هاتف موثَّق برمز، لا ببريد وكلمة مرور.
-          هذه الخطوة لم تُبنَ في نسخة الويب بعد، ولذلك يبقى الحساب مرتبطاً بهذا
-          المتصفح وحده.
-        </p>
-      </div>
+      <p class="note" style="text-align:center;margin-top:16px">
+        لست مراجعاً؟ <a href="#/login" style="color:var(--teal)">دخول الأعضاء</a>
+      </p>
     </div>
   </div>`;
+
+// ── members ───────────────────────────────────────────────────────────
+
+/** Sign in, or create an account — the same screen, two modes. */
+screens.login = () => {
+  const creating = state.loginMode === 'signup';
+  return `
+  <div class="screen">
+    ${appbar(creating ? 'إنشاء حساب' : 'دخول')}
+    <div class="pad" id="login-form" data-mode="${creating ? 'signup' : 'signin'}" data-after="member">
+      <div class="center" style="margin-top:6px">${star(26)}</div>
+      <h3 class="hd" style="text-align:center;margin-top:14px">
+        ${creating ? 'أنشئ حسابك' : 'أهلاً بعودتك'}
+      </h3>
+      <p class="body" style="text-align:center;font-size:14.5px;color:var(--ink-soft)">
+        ${creating
+          ? 'البريد وكلمة المرور هما ما يعيدك إلى طلبك من أي جهاز.'
+          : 'ادخل بالبريد وكلمة المرور اللذين أنشأت بهما حسابك.'}
+      </p>
+
+      <label class="field" style="margin-top:18px">
+        <span>البريد الإلكتروني</span>
+        <input type="email" name="email" dir="ltr" inputmode="email"
+               autocomplete="${creating ? 'username' : 'username'}" placeholder="you@example.com">
+      </label>
+
+      <label class="field">
+        <span>كلمة المرور</span>
+        <input type="password" name="password" dir="ltr"
+               autocomplete="${creating ? 'new-password' : 'current-password'}">
+      </label>
+
+      <div id="login-error"></div>
+      <button class="btn" style="margin-top:6px" id="login-submit">
+        ${creating ? 'إنشاء الحساب' : 'دخول'}
+      </button>
+
+      <button class="btn quiet" style="margin-top:10px" data-login-mode="${
+        creating ? 'signin' : 'signup'}">
+        ${creating ? 'لديّ حساب — دخول' : 'ليس لديّ حساب — إنشاء حساب'}
+      </button>
+
+      ${state.userId && !state.email ? `
+        <div class="panel tinted accent" style="margin-top:22px">
+          <p class="eyebrow">تستخدم الموقع بالفعل</p>
+          <p style="margin:0;font-size:14px;line-height:1.85">
+            إنشاء حساب جديد من هنا يبدأ من الصفر. إن كنت قد بدأت طلباً على هذا
+            المتصفح، اربطه بحسابك من شاشة <a href="#/profile" style="color:var(--teal)">ملفي</a>
+            حتى لا تفقده.
+          </p>
+        </div>` : ''}
+    </div>
+  </div>`;
+};
 
 function wireLogin() {
   const form = document.getElementById('login-form');
@@ -998,55 +1139,81 @@ function wireLogin() {
   const errorBox = document.getElementById('login-error');
   if (!form || !button) return;
 
+  const creating = form.dataset.mode === 'signup';
+  const staff = form.dataset.after === 'admin';
+  const label = button.textContent.trim();
+
+  const fail = (message) => {
+    errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">${message}</div>`;
+    button.disabled = false;
+    button.textContent = label;
+  };
+
   const submit = async () => {
     const email = form.querySelector('[name="email"]').value.trim();
     const password = form.querySelector('[name="password"]').value;
 
-    if (!email || !password) {
-      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">أدخل البريد وكلمة المرور.</div>`;
-      return;
-    }
-    if (!state.db) {
-      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">لا يوجد خادم في هذه النسخة.</div>`;
-      return;
-    }
+    if (!email || !password) return fail('أدخل البريد وكلمة المرور.');
+    if (creating && password.length < 6) return fail('اختر كلمة مرور من ٦ أحرف أو أكثر.');
+    if (!state.db) return fail('لا يوجد خادم في هذه النسخة.');
 
     errorBox.innerHTML = '';
     button.disabled = true;
-    button.textContent = 'جارٍ الدخول…';
+    button.textContent = creating ? 'جارٍ الإنشاء…' : 'جارٍ الدخول…';
 
     try {
-      await state.db.signInWithPassword(email, password);
+      if (creating) {
+        const result = await state.db.signUpWithPassword(email, password);
+        if (result.needsConfirmation) {
+          // Saying "check your email" when the project's mail is not
+          // configured is how someone waits for a message that will
+          // never arrive.
+          errorBox.innerHTML = `
+            <div class="banner" style="margin-bottom:12px">
+              أُنشئ الحساب، لكنه يحتاج تفعيل البريد قبل الدخول. إن لم تصلك رسالة،
+              أوقف تأكيد البريد من إعدادات Supabase، أو أكّد الحساب من لوحة التحكم.
+            </div>`;
+          button.disabled = false;
+          button.textContent = label;
+          return;
+        }
+      } else {
+        await state.db.signInWithPassword(email, password);
+      }
+
+      // Everything held in memory was read as whoever this browser was a
+      // moment ago.
       const me = await state.db.whoami();
       state.isAdmin = !!me?.is_admin;
       state.userId = me?.user_id || '';
-    state.email = me?.email || '';
       state.email = me?.email || '';
-      // Everything held was read as the previous account.
-      invalidate('profile', 'today', 'admin');
+      state.application = null;
       state.profile = null;
       state.queue = null;
       state.members = null;
+      invalidate('profile', 'today', 'admin');
 
-      if (!state.isAdmin) {
-        // Signed in, correctly, to an account nobody granted. Saying so
-        // plainly beats dropping them on a desk that refuses them:
-        // authentication and authorisation are separate here on purpose.
-        errorBox.innerHTML = `
-          <div class="banner warn" style="margin-bottom:12px">
-            دخلت بنجاح، لكن هذا الحساب ليس مراجعاً. تُمنح الصلاحية من محرّر SQL:
-            <br><code dir="ltr">select grant_admin_by_email('${escapeAttr(email)}');</code>
-          </div>`;
-        button.disabled = false;
-        button.textContent = 'دخول';
-        return;
+      if (staff) {
+        if (!state.isAdmin) {
+          // Signed in correctly, to an account nobody granted.
+          // Authentication and authorisation are separate here on
+          // purpose, and saying so beats a desk that refuses them.
+          return fail(`دخلت بنجاح، لكن هذا الحساب ليس مراجعاً. تُمنح الصلاحية من محرّر SQL:
+            <br><code dir="ltr">select grant_admin_by_email('${escapeAttr(email)}');</code>`);
+        }
+        return go('admin', { replace: true });
       }
-      go('admin', { replace: true });
+
+      // A member goes where they left off: their status if they have
+      // applied, the form if they have not, the desk if they happen to
+      // be a reviewer signing in on the member screen.
+      state.application = await state.db.myApplication();
+      go(state.isAdmin ? 'admin'
+         : !state.application ? 'apply'
+         : state.application.status === 'admitted' ? 'today'
+         : 'review', { replace: true });
     } catch (error) {
-      errorBox.innerHTML = `<div class="banner warn" style="margin-bottom:12px">${
-        escapeAttr(error.message)}</div>`;
-      button.disabled = false;
-      button.textContent = 'دخول';
+      fail(escapeAttr(error.message));
     }
   };
 
@@ -1114,7 +1281,7 @@ screens.admin = () => {
             <p style="margin:0;font-size:15px">لا توجد جلسة بعد. أعد تحميل الصفحة.</p>
           </div>`}
 
-        <button class="btn" style="margin-top:18px" data-go="login">دخول بحساب مراجع</button>
+        <button class="btn" style="margin-top:18px" data-go="staff">دخول بحساب مراجع</button>
         <button class="btn ghost" style="margin-top:10px" data-go="today">رجوع</button>
       </div>
     </div>`;
@@ -1245,9 +1412,31 @@ const TABS = [
 const IN_APP = new Set(TABS.map(([id]) => id));
 const history = [];
 
+// A route with no screen. Reachable from a typo, an old link, or — the
+// way it was actually found — a URL from a newer build than the one
+// deployed. The router used to return early here, leaving whatever was on
+// the page, which on first load is nothing: a white page with no
+// explanation, on a site that was working a moment ago.
+screens.missing = () => `
+  <div class="screen pad" style="padding-top:60px">
+    <div class="center">${star(26, 'var(--muted)')}</div>
+    <h3 class="hd" style="text-align:center;margin-top:16px">لا توجد هذه الصفحة</h3>
+    <p class="body" style="text-align:center;font-size:15px;color:var(--ink-soft)">
+      ${escapeAttr(state.missingRoute || '')} ليست شاشة في هذه النسخة.
+      قد يكون الرابط من نسخة أحدث مما هو منشور.
+    </p>
+    <button class="btn" style="margin-top:18px" data-go="welcome">إلى البداية</button>
+  </div>`;
+
 function render(name) {
-  const build = screens[name];
-  if (!build) return;
+  let build = screens[name];
+
+  if (!build) {
+    state.missingRoute = name;
+    build = screens.missing;
+    name = 'missing';
+    console.warn(`[nasib] no screen for "${state.missingRoute}" — is this build older than the link?`);
+  }
 
   app.innerHTML = build();
   app.firstElementChild?.classList.add('on');
@@ -1269,7 +1458,7 @@ function render(name) {
   if (name === 'camera') wireCamera();
   if (name === 'chat') wireChat();
   if (name === 'profile') wireProfile();
-  if (name === 'login') wireLogin();
+  if (name === 'login' || name === 'staff') wireLogin();
 
   // Screens that need a round trip paint twice: once from whatever is in
   // `state` (a skeleton, or the previous read) and again when the data
@@ -1633,8 +1822,13 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode]');
   if (!el) return;
+
+  if (el.dataset.loginMode) {
+    state.loginMode = el.dataset.loginMode;
+    return render('login');
+  }
 
   if (el.hasAttribute('data-signout')) {
     await state.db?.signOut();

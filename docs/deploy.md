@@ -75,6 +75,12 @@ way past. Check Storage afterwards: if the bucket is not there, the
 migration ran before the storage extension was ready — create a bucket
 named `photos`, leave **Public** off, and run 0010 again.
 
+**Turn off email confirmation** (Authentication → Sign In / Providers →
+Email → "Confirm email"). A new project's built-in mail service is
+heavily rate-limited and its messages routinely never arrive, so leaving
+confirmation on means accounts that can be created and never used. Turn
+it back on once you have configured your own SMTP.
+
 **Turn on anonymous sign-ins.** Authentication → Sign In / Providers →
 Anonymous sign-ins. Without it, nobody gets a session, `auth.uid()` is
 null, and every row-level security policy correctly refuses everything.
@@ -170,6 +176,28 @@ trail catches. And you cannot admit your own account: an admin who can is
 an admin whose own profile was never reviewed.
 
 To check it worked before touching the app: `select * from admin_users;`
+
+---
+
+## 1c. The two sign-in screens
+
+| URL | Who | What it does |
+|---|---|---|
+| `/#/login` | members | Sign in, or create an account. |
+| `/#/staff` | reviewers | Sign in only — no account creation. |
+
+Same mechanism underneath: a reviewer is an ordinary account with a row
+in `admin_users`. They are separate URLs because a member arriving at a
+page headed "reviewers" learns something about the product that is none
+of their business, and a reviewer does not want a page offering to make
+them an account.
+
+Anyone who used the site before signing up has an anonymous account with
+their application on it. **ملفي** offers to add an email and password to
+*that* account rather than starting a new one — which matters, because
+signing up fresh would strand the application on an id nobody can reach.
+Applying now requires a credential for exactly that reason, and the
+database enforces it.
 
 ---
 

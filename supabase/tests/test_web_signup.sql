@@ -13,10 +13,12 @@
 -- Two applicants who do not exist yet. auth.users is the FK target, so
 -- they have to exist there first — in the hosted project that row is
 -- created by the anonymous sign-in, not by us.
-insert into auth.users (id) values
-  ('a0000000-0000-0000-0000-00000000000a'),
-  ('b0000000-0000-0000-0000-00000000000b')
-on conflict do nothing;
+-- With emails: an application has to belong to an account its owner can
+-- sign back into, so these are accounts, not anonymous sessions.
+insert into auth.users (id, email) values
+  ('a0000000-0000-0000-0000-00000000000a', 'sara@example.com'),
+  ('b0000000-0000-0000-0000-00000000000b', 'omar@example.com')
+on conflict (id) do update set email = excluded.email;
 
 -- ── a complete application ────────────────────────────────────────────
 select act_as('a0000000-0000-0000-0000-00000000000a');

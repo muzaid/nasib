@@ -5,7 +5,10 @@ create schema if not exists auth;
 
 create table if not exists auth.users (
   id    uuid primary key default gen_random_uuid(),
-  email text
+  email text,
+  -- Real auth.users has this, and has_credential() reads it: an account
+  -- with neither an email nor a phone is an anonymous one.
+  phone text
 );
 
 -- The `nullif` matters and is not decoration: an unauthenticated request
