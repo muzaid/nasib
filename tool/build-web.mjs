@@ -20,19 +20,60 @@ import { dirname, join } from "node:path";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const target = join(root, "apps", "web", "config.js");
 
-const url = (process.env.SUPABASE_URL || "").trim();
-const key = (process.env.SUPABASE_ANON_KEY || "").trim();
+// Vercel's Supabase integration writes NEXT_PUBLIC_SUPABASE_URL and does
+// not write a plain SUPABASE_URL, so reading only the plain name builds
+// the demo on a correctly configured project and says nothing about why.
+// The NEXT_PUBLIC_ prefix is a Next.js convention this site does not use;
+// it is accepted because that is the name the integration produces.
+const url = first("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
+
+// Supabase now issues two key formats. The old one is a JWT with a `role`
+// claim; the new one is a prefixed opaque string, `sb_publishable_…` for
+// the client and `sb_secret_…` for the server. Both client formats work
+// as an apikey, and both server formats are catastrophic here.
+const key = first("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY",
+                  "NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+function first(...names) {
+  for (const name of names) {
+    const value = (process.env[name] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
 
 if (!url || !key) {
   if (existsSync(target)) unlinkSync(target);
-  console.log("no SUPABASE_URL / SUPABASE_ANON_KEY — building the demo, with fixtures and no backend");
+  // Naming which half is missing, because "not configured" when one of
+  // the two is set is a five-minute hunt through the Vercel dashboard.
+  console.log(
+    `building the demo, with fixtures and no backend — ${
+      !url && !key ? "neither the project URL nor the key is set"
+      : !url ? "the key is set but no project URL (SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL)"
+      : "the project URL is set but no key (SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY)"}`,
+  );
   process.exit(0);
 }
 
-// The one thing that must never happen here. A service-role key bypasses
-// every row-level security policy in supabase/migrations, and this file is
-// served to every visitor. The two key types are told apart by the `role`
-// claim in the JWT payload, which is the middle segment.
+// The one thing that must never happen here. A server key bypasses every
+// row-level security policy in supabase/migrations, and this file is
+// served to every visitor.
+//
+// Two checks, because one does not cover both key formats. The JWT check
+// reads the `role` claim; a `sb_secret_…` key is not a JWT at all, so the
+// role check cannot see it and would wave it through — which is the more
+// likely mistake now, since that key sits directly above the publishable
+// one in the dashboard and in the env list Vercel hands you.
+if (/^sb_secret_/.test(key) || /^service_role/.test(key)) {
+  console.error(
+    "\nThat is a SECRET key (sb_secret_…), not a publishable one.\n\n" +
+    "It bypasses row-level security and config.js is served to every\n" +
+    "visitor. Refusing to write it. Use SUPABASE_ANON_KEY, or the\n" +
+    "sb_publishable_… key.\n",
+  );
+  process.exit(1);
+}
+
 const role = readRole(key);
 if (role && role !== "anon") {
   console.error(

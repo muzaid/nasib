@@ -201,6 +201,104 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
       };
     },
 
+    /** Who this browser is, and whether it is a reviewer. */
+    whoami: () => rpc("whoami", {}),
+
+    /** The whole profile, for the edit screen to prefill from. */
+    myProfile: () => rpc("my_profile", {}),
+
+    /** Other admitted members, or `{gated: true}` with a reason. */
+    browse: (limit = 30) => rpc("browse_members", { limit_to: limit }),
+
+    // ── The review desk. Every one of these refuses unless the caller is
+    // a row in admin_users, which nothing reachable from here can create.
+    adminQueue: (filter = "waiting") => rpc("admin_queue", { filter }),
+    adminDecide: (userId, action, reason = "reviewed", notes = null) =>
+      rpc("admin_decide", { target: userId, action, reason_code: reason, notes }),
+
+    // ── Photos ────────────────────────────────────────────────────────
+    myPhotos: () => rpc("my_photos", {}),
+
+    /**
+     * Upload a file to the private bucket, then register the row.
+     *
+     * Two steps rather than one, and in this order, because the row is
+     * what the app reads: an object with no row is invisible and gets
+     * cleaned up, while a row pointing at an object that was never
+     * uploaded is a broken image in somebody's profile.
+     */
+    async uploadPhoto(file, { makePrimary = false } = {}) {
+      const s = await signIn();
+      if (!s.user_id) throw new DataError("لا يمكن تحديد الحساب.");
+
+      // The path has to start with the user id: the storage policy checks
+      // the first folder segment, and add_photo checks it again.
+      const safe = (file.name || "photo.jpg").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-40);
+      const path = `${s.user_id}/${Date.now()}-${safe}`;
+
+      const res = await http(`${base}/storage/v1/object/photos/${path}`, {
+        method: "POST",
+        headers: {
+          apikey: key,
+          authorization: `Bearer ${s.access_token}`,
+          "x-upsert": "false",
+          ...(file.type ? { "content-type": file.type } : {}),
+        },
+        body: file,
+      });
+
+      if (!res.ok) {
+        const payload = await readBody(res);
+        if (res.status === 404) {
+          throw new DataError("لم يُنشَأ مخزن الصور بعد — أنشئ bucket باسم photos في Supabase.");
+        }
+        throw new DataError(payload?.message || `تعذّر رفع الصورة (${res.status}).`);
+      }
+
+      return rpc("add_photo", { path, make_primary: makePrimary });
+    },
+
+    /** Remove the row, then the object. See delete_photo for the order. */
+    async deletePhoto(id) {
+      const result = await rpc("delete_photo", { photo_id: id });
+      const s = await signIn();
+      try {
+        await http(`${base}/storage/v1/object/photos/${result.storage_path}`, {
+          method: "DELETE",
+          headers: { apikey: key, authorization: `Bearer ${s.access_token}` },
+        });
+      } catch {
+        // The row is already gone, so the photo is gone from the product.
+        // A leftover object in a private bucket nobody can list is not
+        // worth failing the interaction over.
+      }
+      return result;
+    },
+
+    /**
+     * A URL for a private object, valid for `seconds`.
+     *
+     * The bucket is private, so there is no permanent URL to hold — which
+     * is the point. A link that leaks expires; a public bucket URL is
+     * forever, and someone will paste one into a group chat.
+     */
+    async signedUrl(path, seconds = 600) {
+      const s = await signIn();
+      const res = await http(`${base}/storage/v1/object/sign/photos/${path}`, {
+        method: "POST",
+        headers: {
+          apikey: key,
+          authorization: `Bearer ${s.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ expiresIn: seconds }),
+      });
+      const payload = await readBody(res);
+      if (!res.ok || !payload?.signedURL) return "";
+      // The API returns a path relative to /storage/v1.
+      return `${base}/storage/v1${payload.signedURL.replace(/^\/?/, "/")}`;
+    },
+
     /** For the "not signed in" case in tests and for a manual reset. */
     forget: () => writeSession(null),
   };

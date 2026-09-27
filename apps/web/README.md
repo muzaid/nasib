@@ -110,12 +110,23 @@ Both states are normal, and the site tells you which one it is in.
 `index.html` opened directly — everything is fixtures mirroring
 `supabase/seed/`. Nothing is stored; reload and it starts again.
 
-**With a Supabase project configured** (`docs/deploy.md`), the application
-is real: submitting it writes a row, your status survives a reload, and
-coming back lands you on that status rather than on the welcome screen.
-Everything past admission is still fixtures, because a candidate, a photo
-request and a thread each need a second real person and a match between
-you, and a new deployment has neither.
+**With a Supabase project configured** (`docs/deploy.md`), most of the
+product is real: signing up and editing it afterwards, your own profile,
+photo upload into a private bucket, the review desk where an admin admits
+or rejects, and a directory of people who were actually admitted. Coming
+back lands you where you belong — the desk if you are a reviewer, the
+directory if you are admitted, your status if you are waiting.
+
+The photo requests, the thread and the office meeting are still fixtures:
+each needs two admitted people and a match between them, which is the
+matching service's job.
+
+One setup step has no UI on purpose. An admin is a row in `admin_users`,
+and nothing reachable from a browser can create one — you run
+`select grant_admin('<your id>')` in the SQL editor, and the profile
+screen prints the line with your id in it. An invite code or a
+first-user-wins rule would be a path into the review desk that exists in
+the deployed system.
 
 The part worth reading is `data.js`. Two things it explains at length,
 because getting either wrong is expensive: why the anon key belongs in the
@@ -128,8 +139,8 @@ nothing to decide on.
 
 ```bash
 npm test                          # 44 cases: the chat rules, and the client
-node apps/web/test/browser.mjs    # the wiring, in a real browser
-./supabase/tests/run.sh           # 142 assertions, including the same chat cases
+node apps/web/test/browser.mjs    # 33 checks: the wiring, in a real browser
+./supabase/tests/run.sh           # 183 assertions, including the same chat cases
 ```
 
 The browser pass is the one that catches what unit tests cannot: a chip

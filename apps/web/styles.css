@@ -325,7 +325,10 @@ input[type='tel'] { text-align: right; }
   max-width: 520px; margin: 0 auto;
   height: calc(var(--bar) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  display: none; grid-template-columns: repeat(4, 1fr);
+  /* One column per tab, derived from the count rather than hard-coded:
+     a fifth tab was added and the grid still said four, so it wrapped
+     onto a second row and sat on top of the page. */
+  display: none; grid-template-columns: repeat(var(--tabs, 5), 1fr);
   background: color-mix(in srgb, var(--panel) 92%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
@@ -335,7 +338,8 @@ input[type='tel'] { text-align: right; }
 .tabbar button {
   border: 0; background: transparent; cursor: pointer;
   display: grid; place-items: center; gap: 3px;
-  font: inherit; font-size: 11px; color: var(--muted); padding: 0;
+  font: inherit; font-size: 10.5px; color: var(--muted); padding: 0 2px;
+  min-width: 0; overflow: hidden; white-space: nowrap;
 }
 .tabbar button[aria-current='true'] { color: var(--teal); }
 
@@ -360,3 +364,72 @@ input[type='tel'] { text-align: right; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------------- my photos ---------------- */
+
+/* Three across on a phone, which makes six photos two tidy rows and keeps
+   each cell big enough to tell two faces apart at arm's length. */
+.photo-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.photo-cell {
+  position: relative; aspect-ratio: 3 / 4; border-radius: 12px;
+  overflow: hidden; background: var(--page); border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-cell img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  /* The same veil the rest of the app uses, applied to your own photos
+     too. Seeing them the way everyone else does is the point: it is how
+     you learn that "unblurred" is not a setting you have. */
+  filter: blur(11px) saturate(.85); transform: scale(1.12);
+}
+.photo-veil {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; background: var(--teal-soft); z-index: 0;
+}
+.photo-cell img { z-index: 1; }
+.photo-tag {
+  position: absolute; inset-inline-start: 5px; bottom: 5px; z-index: 2;
+  font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 20px;
+  background: rgba(255, 255, 255, .92); color: var(--ink);
+}
+.photo-tag.pending { background: rgba(255, 255, 255, .92); color: var(--caution); }
+.photo-del {
+  position: absolute; inset-inline-end: 5px; top: 5px; z-index: 2;
+  width: 27px; height: 27px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .92); color: var(--danger);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.photo-cell.add {
+  flex-direction: column; gap: 5px; color: var(--teal); cursor: pointer;
+  border-style: dashed; border-color: var(--teal);
+}
+
+.code-line {
+  display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; background: var(--page); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; overflow-x: auto;
+  white-space: nowrap; color: var(--ink-soft);
+  /* SQL reads left to right even on an RTL page, and bidi would otherwise
+     move the quotes and the semicolon somewhere the reader has to guess. */
+  direction: ltr; text-align: left;
+}
+
+/* Two labels on one photo were absolutely positioned at the same corner,
+   so the second sat on top of the first. They share a row instead. */
+.photo-tags {
+  position: absolute; inset-inline: 5px; bottom: 5px; z-index: 2;
+  display: flex; gap: 4px; flex-wrap: wrap;
+}
+.photo-tags .photo-tag { position: static; }
+
+/* Filters stay on one line at any width. Four Arabic words plus counts
+   wrap on a 360px phone, and a wrapped filter row pushes the first
+   applicant below the fold. */
+.chips.scroll-row {
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  margin-inline: -16px; padding-inline: 16px;
+}
+.chips.scroll-row::-webkit-scrollbar { display: none; }
+.chips.scroll-row .chip { flex: none; }

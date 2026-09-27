@@ -88,6 +88,17 @@ const state = {
   db: null,
   application: null,
   saving: false,
+
+  // Read from the server, null until then. `null` means "not fetched" and
+  // an empty array means "fetched, nothing there" — the two need different
+  // screens, and a single falsy check would show "nobody yet" while the
+  // request was still in flight.
+  profile: null,
+  members: null,
+  queue: null,
+  queueFilter: 'waiting',
+  gate: '',
+  isAdmin: false,
 };
 
 // --------------------------------------------------------------------- //
@@ -160,6 +171,10 @@ const ico = {
   tabPhotos: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="3.4" stroke-dasharray="2 2.5"/></svg>',
   tabChat: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5Z"/></svg>',
   tabMeet: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 .8-1l8-1.6A1 1 0 0 1 14 3.4V21M14 21h6V9h-6M4 21h16"/></svg>',
+  tabProfile: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-3.6 3.4-6.2 7.5-6.2s7.5 2.6 7.5 6.2"/></svg>',
+  desk: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18.5" cy="16.5" r="3"/><path d="M20.8 18.8 23 21"/></svg>',
+  plus: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  trash: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>',
 };
 
 const appbar = (title, { back = true, side = '' } = {}) => `
@@ -414,8 +429,96 @@ screens.review = () => {
   </div>`;
 };
 
+/**
+ * Turn a row from browse_members into the shape the card below expects.
+ *
+ * The fixture rows carry prose the database does not store — "you both
+ * want children", "he prays, you sometimes do" — because a real one of
+ * those is a comparison against the viewer's own answers, which is the
+ * matching service's job and not something a directory row can carry.
+ * So a real member's card shows what the database actually knows and
+ * leaves the comparison out rather than inventing it.
+ */
+const asCandidate = (row) => ({
+  id: row.id,
+  name: row.display_name || 'بلا اسم',
+  age: row.age || '',
+  city: row.city || '—',
+  work: row.occupation || '',
+  // Deliberately left undefined rather than false. The directory returns
+  // no verification result — 0010 does not select one — and both `true`
+  // and `false` would be a statement about this person that nothing here
+  // supports. The card shows no badge at all for a real member.
+  verified: undefined,
+  photos: Math.min(row.photo_count || 0, 4),
+  bio: row.bio || 'لم يكتب نبذة بعد.',
+  facts: [
+    word('timeline', row.timeline),
+    word('marital_status', row.marital_status),
+    word('practice_level', row.practice_level),
+    row.willing_to_relocate ? 'مستعد للانتقال' : 'يفضّل مدينته',
+    row.family_aware ? 'عائلته على علم' : '',
+  ].filter(Boolean),
+  agree: [],
+  differ: [],
+});
+
+async function loadMembers() {
+  if (!state.db) return;
+  try {
+    const result = await state.db.browse();
+    state.gate = result.gated ? result.status : '';
+    state.members = (result.rows || []).map(asCandidate);
+  } catch (error) {
+    console.warn('[nasib] could not read the directory:', error.message);
+    state.members = [];
+  }
+}
+
 screens.today = () => {
-  const c = DEMO.candidates[state.candidate];
+  // Live: real admitted members. Otherwise the fixtures, as before.
+  const live = state.db && state.members;
+
+  if (live && state.gate) {
+    return `
+      <div class="screen">
+        ${appbar('اليوم', { back: false })}
+        <div class="pad center" style="min-height:60vh;text-align:center">
+          <div>
+            ${star(30)}
+            <h3 class="hd" style="margin-top:18px">لم يُفتح هذا القسم بعد</h3>
+            <p class="body" style="color:var(--ink-soft)">
+              حالة طلبك: ${word('status', state.gate)}. نعرض عليك أشخاصاً بعد
+              قبول طلبك، لأن الطرف الآخر مرّ بالمراجعة نفسها.
+            </p>
+            <button class="btn quiet" style="margin-top:10px" data-go="profile">ملفي</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const pool = live ? state.members : DEMO.candidates;
+  const c = pool[state.candidate];
+
+  if (!c && live) {
+    return `
+      <div class="screen">
+        ${appbar('اليوم', { back: false })}
+        <div class="pad center" style="min-height:60vh;text-align:center">
+          <div>
+            ${star(30)}
+            <h3 class="hd" style="margin-top:18px">${
+              state.members.length === 0 ? 'لا أحد بعد' : 'انتهت مرشّحات اليوم'}</h3>
+            <p class="body" style="color:var(--ink-soft)">
+              ${state.members.length === 0
+                ? 'لم يُقبل أحد غيرك حتى الآن. القبول قرار بشري، ويحتاج شخصاً في مكتب المراجعة.'
+                : 'نعرض خمسة إلى ثمانية أشخاص في اليوم. عدد قليل يُقرأ، وعدد كبير يُمرَّر.'}
+            </p>
+          </div>
+        </div>
+      </div>`;
+  }
+
   if (!c) {
     return `
       <div class="screen">
@@ -434,16 +537,23 @@ screens.today = () => {
 
   return `
     <div class="screen">
-      ${appbar('اليوم', { back: false, side: `${DEMO.candidates.length - state.candidate} متبقّون` })}
+      ${appbar('اليوم', { back: false, side: `${pool.length - state.candidate} متبقّون` })}
       <div class="pad">
         <div style="display:flex;align-items:flex-start;gap:12px">
           <div style="flex:1;min-width:0">
             <h3 class="hd" style="margin:0">${c.name}، ${c.age}</h3>
             <p class="sub" style="margin:2px 0 0">${c.city} · ${c.work}</p>
           </div>
-          ${c.verified
+          ${c.verified === true
             ? `<span class="badge id">${star(12, 'var(--accent)')} هوية موثّقة</span>`
-            : `<span class="badge photo">${star(12, 'var(--teal)')} صورة موثّقة</span>`}
+            : c.verified === false
+            ? `<span class="badge photo">${star(12, 'var(--teal)')} صورة موثّقة</span>`
+            : ''}
+          ${/* `undefined` is the real member case: the directory does not
+                carry a verification result, and a badge is a claim. An app
+                that shows "صورة موثّقة" because it had nothing to show is
+                worse than one that shows nothing — the badge is the whole
+                reason someone trusts the profile. */ ''}
         </div>
 
         <div class="spacer"></div>
@@ -466,6 +576,7 @@ screens.today = () => {
         <p class="eyebrow">بكلماته</p>
         <div class="panel flat"><p style="margin:0;font-size:15px;line-height:1.95">${c.bio}</p></div>
 
+        ${(c.agree.length + c.differ.length) === 0 ? '' : `
         <div class="spacer"></div>
         <p class="eyebrow">أين تتفقان وأين تختلفان</p>
         <div class="panel tight">
@@ -476,7 +587,7 @@ screens.today = () => {
                    stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12h7"/></svg>
               <span>${d}</span>
             </div>`).join('')}
-        </div>
+        </div>`}
 
         <div class="spacer"></div>
         <div class="btn-row">
@@ -628,6 +739,291 @@ screens.meeting = () => `
   </div>`;
 
 // --------------------------------------------------------------------- //
+// My profile
+// --------------------------------------------------------------------- //
+
+// Arabic for the enum values, in one place. The database stores the enum;
+// a screen that stored the Arabic would make every query a translation.
+const WORDS = {
+  marital_status: {
+    never_married: 'لم يسبق لي الزواج', divorced: 'مطلّق/ة', widowed: 'أرمل/ة',
+  },
+  practice_level: {
+    practicing: 'ملتزم/ة', moderately_practicing: 'ملتزم/ة إلى حدٍّ ما',
+    cultural: 'بحكم النشأة', prefer_not_to_say: 'أفضّل عدم الإجابة',
+  },
+  timeline: {
+    within_6_months: 'خلال 6 شهور', within_1_year: 'خلال سنة',
+    within_2_years: 'خلال سنتين', when_right_person: 'عند الشخص المناسب',
+  },
+  status: {
+    applying: 'قيد الاستكمال', pending_review: 'قيد المراجعة', admitted: 'مقبول',
+    rejected: 'مرفوض', shadow_limited: 'محدود', suspended: 'موقوف',
+    banned: 'محظور', paused: 'متوقف مؤقتاً', closed: 'مغلق',
+  },
+};
+const word = (group, value) => WORDS[group]?.[value] || value || '—';
+
+const fact = (label, value) => `
+  <div class="line-item" style="align-items:baseline">
+    <span class="tiny muted" style="min-width:104px">${label}</span>
+    <span style="flex:1;font-size:15px">${escapeAttr(value ?? '—')}</span>
+  </div>`;
+
+screens.profile = () => {
+  const p = state.profile;
+
+  if (!state.db) {
+    return `
+    <div class="screen">
+      ${appbar('ملفي', { back: false })}
+      <div class="pad">
+        <div class="panel tinted accent">
+          <p class="eyebrow">لا يوجد خادم</p>
+          <p style="margin:0;font-size:14.5px;line-height:1.85">
+            هذه النسخة تعمل ببيانات ثابتة، فلا ملف شخصي لعرضه. اربط مشروع
+            Supabase ليصبح الملف حقيقياً — التفاصيل في docs/deploy.md.
+          </p>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (!p) {
+    return `
+    <div class="screen">
+      ${appbar('ملفي', { back: false })}
+      <div class="pad"><div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div></div>
+    </div>`;
+  }
+
+  if (!p.user_id) {
+    return `
+    <div class="screen">
+      ${appbar('ملفي', { back: false })}
+      <div class="pad">
+        <div class="panel">
+          <p style="margin:0 0 10px;font-size:15px">لم تُرسل طلب انضمام من هذا الجهاز بعد.</p>
+          <button class="btn" data-go="apply">ابدأ طلب الانضمام</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const photos = p.photos || [];
+
+  return `
+  <div class="screen">
+    ${appbar('ملفي', { back: false })}
+    <div class="pad">
+      <div class="panel">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:19px;font-weight:700">${escapeAttr(p.display_name || '—')}</div>
+            <div class="tiny muted" style="margin-top:3px">
+              ${escapeAttr(p.city || 'بلا مدينة')} · ${word('status', p.status)}
+            </div>
+          </div>
+          <button class="btn quiet" style="width:auto" data-go="apply">تعديل</button>
+        </div>
+      </div>
+
+      <p class="eyebrow">صوري</p>
+      <div class="panel">
+        <div class="photo-grid" id="photo-grid">
+          ${photos.map((ph) => `
+            <div class="photo-cell" data-path="${escapeAttr(ph.storage_path)}">
+              <div class="photo-veil">${star(22, 'var(--accent)', 0.4)}</div>
+              <img alt="" data-signed="${escapeAttr(ph.storage_path)}">
+              <div class="photo-tags">
+                ${ph.is_primary ? '<span class="photo-tag">الأساسية</span>' : ''}
+                ${ph.approved ? '' : '<span class="photo-tag pending">قيد المراجعة</span>'}
+              </div>
+              <button class="photo-del" data-del-photo="${ph.id}" aria-label="حذف">${ico.trash}</button>
+            </div>`).join('')}
+          ${photos.length < 6 ? `
+            <label class="photo-cell add">
+              ${ico.plus}
+              <span class="tiny">أضف صورة</span>
+              <input type="file" id="photo-input" accept="image/*" hidden>
+            </label>` : ''}
+        </div>
+        <p class="note" style="margin-top:12px">
+          صورك مموّهة لكل من يراها، ولا تُكشف إلا بإذنك لشخص واحد ولمدة محددة.
+          كل صورة تُراجع قبل أن تظهر لأحد. الحد ست صور.
+        </p>
+        <div id="photo-error"></div>
+      </div>
+
+      <p class="eyebrow">ما قدّمته</p>
+      <div class="panel tight">
+        ${fact('الحالة', word('marital_status', p.marital_status))}
+        ${fact('الالتزام', word('practice_level', p.practice_level))}
+        ${fact('الإطار الزمني', word('timeline', p.timeline))}
+        ${fact('الانتقال', p.willing_to_relocate ? 'مستعد/ة' : 'أفضّل مدينتي')}
+        ${fact('العائلة', p.family_aware ? 'على علم' : 'ليست على علم بعد')}
+        ${p.bio ? fact('نبذة', p.bio) : ''}
+      </div>
+
+      ${state.isAdmin ? `
+        <button class="btn ghost" style="margin-top:18px" data-go="admin">
+          ${ico.desk} <span style="margin-inline-start:8px">مكتب المراجعة</span>
+        </button>` : ''}
+
+      <p class="eyebrow" style="margin-top:22px">معرّف حسابك</p>
+      <div class="panel tight">
+        <p class="tiny muted" style="margin:0 0 8px;line-height:1.8">
+          هذا ما تحتاجه لتمنح نفسك صلاحية المراجعة، من محرّر SQL في Supabase:
+        </p>
+        <code class="code-line" dir="ltr">select grant_admin('${escapeAttr(p.user_id)}');</code>
+      </div>
+    </div>
+  </div>`;
+};
+
+function wireProfile() {
+  if (!state.db) return;
+
+  // Signed URLs, one per photo, fetched after the screen is on the page.
+  // The bucket is private and these expire, so there is nothing to cache
+  // and no URL worth holding on to.
+  for (const img of document.querySelectorAll('img[data-signed]')) {
+    state.db.signedUrl(img.dataset.signed)
+      .then((url) => { if (url) img.src = url; })
+      .catch(() => {});
+  }
+
+  const input = document.getElementById('photo-input');
+  const errorBox = document.getElementById('photo-error');
+
+  input?.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Checked here because the alternative is a slow upload that fails at
+    // the end, on a phone, on mobile data.
+    if (!file.type.startsWith('image/')) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-top:12px">اختر صورة.</div>`;
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-top:12px">الصورة أكبر من 8 ميغابايت.</div>`;
+      return;
+    }
+
+    errorBox.innerHTML = `<div class="banner" style="margin-top:12px">جارٍ رفع الصورة…</div>`;
+    try {
+      await state.db.uploadPhoto(file);
+      await loadProfile();
+      render('profile');
+      toast('أُضيفت الصورة. ستُراجع قبل أن تظهر لأحد.');
+    } catch (error) {
+      errorBox.innerHTML = `<div class="banner warn" style="margin-top:12px">${
+        escapeAttr(error.message)}</div>`;
+    }
+  });
+}
+
+async function loadProfile() {
+  if (!state.db) return;
+  try {
+    state.profile = await state.db.myProfile();
+  } catch (error) {
+    console.warn('[nasib] could not read the profile:', error.message);
+    state.profile = { user_id: '' };
+  }
+}
+
+// --------------------------------------------------------------------- //
+// The review desk
+// --------------------------------------------------------------------- //
+
+const QUEUE_TABS = [
+  ['waiting', 'في الانتظار'],
+  ['admitted', 'مقبولون'],
+  ['rejected', 'مرفوضون'],
+  ['all', 'الكل'],
+];
+
+screens.admin = () => {
+  const q = state.queue;
+
+  return `
+  <div class="screen">
+    ${appbar('مكتب المراجعة', { side: q ? `${(q.rows || []).length}` : '' })}
+    <div class="pad">
+      <div class="chips scroll-row" style="margin-bottom:16px">
+        ${QUEUE_TABS.map(([id, label]) => `
+          <button class="chip" data-queue="${id}"
+                  aria-pressed="${(state.queueFilter || 'waiting') === id}">
+            ${label}${q?.counts?.[id] ? ` (${q.counts[id]})` : ''}
+          </button>`).join('')}
+      </div>
+
+      ${!q ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : (q.rows || []).length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا أحد هنا.</p></div>`
+        : (q.rows || []).map((r) => `
+          <div class="panel" data-row="${escapeAttr(r.id)}">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:16.5px;font-weight:600">
+                  ${escapeAttr(r.display_name || 'بلا اسم')}${r.age ? `، ${r.age}` : ''}
+                </div>
+                <div class="tiny muted" style="margin-top:2px">
+                  ${escapeAttr(r.city || '—')} · ${word('status', r.status)}
+                  ${r.photo_count ? ` · ${r.photo_count} صور` : ' · بلا صور'}
+                </div>
+              </div>
+            </div>
+
+            <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+              <div class="tiny" style="line-height:2">
+                ${word('marital_status', r.marital_status)} ·
+                ${word('practice_level', r.practice_level)} ·
+                ${word('timeline', r.timeline)}
+                ${r.family_aware ? ' · العائلة على علم' : ''}
+                ${r.willing_to_relocate ? ' · مستعد للانتقال' : ''}
+              </div>
+              ${r.bio ? `<p style="margin:10px 0 0;font-size:14.5px;line-height:1.85">${
+                escapeAttr(r.bio)}</p>` : ''}
+            </div>
+
+            ${['applying', 'pending_review'].includes(r.status) ? `
+              <div class="btn-row" style="margin-top:14px">
+                <button class="btn ghost" data-decide-user="reject" data-id="${escapeAttr(r.id)}">رفض</button>
+                <button class="btn wide" data-decide-user="admit" data-id="${escapeAttr(r.id)}">قبول</button>
+              </div>`
+              : r.status === 'admitted' ? `
+              <div class="btn-row" style="margin-top:14px">
+                <button class="btn quiet" style="color:var(--danger)"
+                        data-decide-user="shadow_limit" data-id="${escapeAttr(r.id)}">تحديد الظهور</button>
+              </div>` : ''}
+          </div>`).join('')}
+
+      <div class="panel tinted accent" style="margin-top:18px">
+        <p class="eyebrow">ما يُسجَّل</p>
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          كل قرار يُحفظ باسمك وبسببه، وكل مرة تفتح هذه القائمة تُسجَّل.
+          هذا ليس تتبّعاً لك، بل ما يجعل إساءة استخدام هذه الشاشة قابلة للكشف.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+async function loadQueue(filter = state.queueFilter || 'waiting') {
+  state.queueFilter = filter;
+  if (!state.db) return;
+  try {
+    state.queue = await state.db.adminQueue(filter);
+  } catch (error) {
+    state.queue = { rows: [], counts: {} };
+    toast(error.message);
+  }
+}
+
+// --------------------------------------------------------------------- //
 // Router
 // --------------------------------------------------------------------- //
 
@@ -636,6 +1032,7 @@ const TABS = [
   ['photos', 'صوري', ico.tabPhotos],
   ['chat', 'المحادثة', ico.tabChat],
   ['meeting', 'اللقاء', ico.tabMeet],
+  ['profile', 'ملفي', ico.tabProfile],
 ];
 
 const IN_APP = new Set(TABS.map(([id]) => id));
@@ -649,18 +1046,47 @@ function render(name) {
   app.firstElementChild?.classList.add('on');
   window.scrollTo(0, 0);
 
-  if (IN_APP.has(name)) state.admitted = true;
-  tabbar.classList.toggle('on', state.admitted && IN_APP.has(name));
+  // The review desk is not a tab, but it is an in-app screen, and a
+  // reviewer who lands on it directly must not be left on a screen with no
+  // way out. It keeps the bar, with `ملفي` marked current, because that is
+  // where the desk is reached from.
+  const inApp = IN_APP.has(name) || name === 'admin';
+  if (inApp) state.admitted = true;
+  tabbar.classList.toggle('on', state.admitted && inApp);
+  tabbar.style.setProperty('--tabs', String(TABS.length));
   tabbar.innerHTML = TABS.map(([id, label, icon]) => `
-    <button data-tab="${id}" aria-current="${id === name}">${icon}<span>${label}</span></button>`).join('');
+    <button data-tab="${id}" aria-current="${
+      id === name || (name === 'admin' && id === 'profile')}">${icon}<span>${label}</span></button>`).join('');
 
   if (name === 'apply') wireApply();
   if (name === 'camera') wireCamera();
   if (name === 'chat') wireChat();
+  if (name === 'profile') wireProfile();
+
+  // Screens that need a round trip paint twice: once from whatever is in
+  // `state` (a skeleton, or the previous read) and again when the data
+  // lands. A screen that waits for the network before drawing anything
+  // reads as a broken tap on a slow connection.
+  if (name === 'profile' && state.db && !state.profile) {
+    loadProfile().then(() => { if (current() === 'profile') render('profile'); });
+  }
+  // The `!state.queue` guard is load-bearing, not an optimisation: without
+  // it the fetch that follows a render triggers another render, which
+  // fetches again. The screen flickers, the buttons are detached from the
+  // DOM mid-tap, and nothing can be clicked. Every one of these three has
+  // to check that it does not already have its data.
+  if (name === 'admin' && state.db && !state.queue) {
+    loadQueue().then(() => { if (current() === 'admin') render('admin'); });
+  }
+  if (name === 'today' && state.db && !state.members) {
+    loadMembers().then(() => { if (current() === 'today') render('today'); });
+  }
 }
 
+const current = () => location.hash.slice(2) || 'welcome';
+
 function go(name, { replace = false } = {}) {
-  if (!replace && location.hash.slice(2) !== name) history.push(location.hash.slice(2) || 'welcome');
+  if (!replace && current() !== name) history.push(current());
   location.hash = `#/${name}`;
 }
 
@@ -977,12 +1403,49 @@ function wireChat() {
 // One delegated listener for everything the screens declare
 // --------------------------------------------------------------------- //
 
-document.addEventListener('click', (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo]');
+document.addEventListener('click', async (event) => {
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo]');
   if (!el) return;
 
   if (el.dataset.go) return go(el.dataset.go);
   if (el.dataset.tab) return go(el.dataset.tab);
+
+  // ── the review desk ──────────────────────────────────────────────────
+  if (el.dataset.queue) {
+    state.queue = null;
+    state.queueFilter = el.dataset.queue;
+    return render('admin');                // the skeleton; the router loads
+  }
+
+  if (el.dataset.decideUser) {
+    const action = el.dataset.decideUser;
+    el.disabled = true;
+    try {
+      await state.db.adminDecide(el.dataset.id, action);
+      toast(action === 'admit' ? 'قُبل الطلب.'
+          : action === 'reject' ? 'رُفض الطلب.'
+          : 'حُدّد ظهوره.');
+      // The directory changes when somebody is admitted, so what is
+      // cached about it is now wrong.
+      state.members = null;
+      await loadQueue();
+      return render('admin');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.delPhoto) {
+    try {
+      await state.db.deletePhoto(el.dataset.delPhoto);
+      await loadProfile();
+      toast('حُذفت الصورة.');
+      return render('profile');
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
 
   if (el.hasAttribute('data-back')) {
     const previous = history.pop();
@@ -1052,12 +1515,27 @@ render(location.hash.slice(2) || 'welcome');
   state.db = db;
 
   try {
-    const row = await db.myApplication();
-    if (row) {
-      state.application = row;
-      // A returning applicant lands on their status rather than on the
-      // welcome screen, which asks them to start something they finished.
-      if ((location.hash.slice(2) || 'welcome') === 'welcome') go('review', { replace: true });
+    // One call establishes both things the shell needs: whether this
+    // browser has an application, and whether it is a reviewer.
+    const me = await db.whoami();
+    state.isAdmin = !!me?.is_admin;
+
+    if (me?.has_row) {
+      state.application = await db.myApplication();
+      // A returning applicant lands somewhere useful rather than on the
+      // welcome screen, which asks them to start something they finished:
+      // a reviewer on the desk, an admitted member inside the app, and
+      // anyone still waiting on their status.
+      if (current() === 'welcome') {
+        go(state.isAdmin ? 'admin'
+           : state.application?.status === 'admitted' ? 'today'
+           : 'review', { replace: true });
+        return;
+      }
+    } else if (state.isAdmin && current() === 'welcome') {
+      // An admin who has not applied — the usual case for the owner.
+      go('admin', { replace: true });
+      return;
     }
   } catch (error) {
     // A misconfigured project, anonymous sign-ins left off, or no network.
@@ -1067,8 +1545,11 @@ render(location.hash.slice(2) || 'welcome');
     state.db = null;
   }
 
-  // The apply screen shows different text depending on whether anything
-  // is being saved, so repaint if that is where we are.
-  const here = location.hash.slice(2) || 'welcome';
-  if (here === 'apply' || here === 'welcome') render(here);
+  // Repaint where the text or the data depends on being connected. The
+  // first render ran before `connect()` resolved, so any screen that
+  // fetches on render did not fetch — it saw `state.db` still null and
+  // skipped. Leaving one out here leaves it showing "loading…" forever.
+  if (['apply', 'welcome', 'profile', 'today', 'admin', 'review'].includes(current())) {
+    render(current());
+  }
 })();
