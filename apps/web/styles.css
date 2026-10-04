@@ -36,53 +36,81 @@
 }
 
 :root {
-  --page: #f6f9fb;
+  --page: #f7f8fa;
   --panel: #ffffff;
-  --panel-2: #eff4f8;
-  --line: #dde5eb;
+  --panel-2: #f0f2f6;
+  --line: #e2e6ee;
 
-  --ink: #0f2033;
-  --ink-soft: #44586b;
-  --muted: #7c8fa0;
+  --ink: #141a26;
+  --ink-soft: #4a5568;
+  --muted: #7b869c;
 
-  --teal: #0e7c7b;
-  --teal-deep: #0a5f5e;
-  --teal-soft: #e2f1f1;
+  /* The brand. The gradient is decoration — accent rules, the swipe
+   * card's verdict wash, a header's edge. Anything carrying white text
+   * uses the solid --teal below it, which is deep enough to pass AA
+   * (4.97:1) where the gradient's warm end reaches only 2.93:1. */
+  --grad: linear-gradient(135deg, #ff4f6e 0%, #ff8a4c 100%);
+  --grad-soft: linear-gradient(135deg, #fff1f4 0%, #fff6ef 100%);
 
-  --accent: #14527a;
-  --accent-soft: #e6eff6;
+  /* Still called --teal because three thousand lines of markup call it
+   * that, and a rename is a thousand edits for no behaviour. It is the
+   * one pressable colour; it is now rose. */
+  --teal: #d6244e;
+  --teal-deep: #c81e46;
+  --teal-soft: #fff0f3;
+
+  --accent: #1d4ed8;
+  --accent-soft: #eef2ff;
 
   --verified: #0f7a57;
   --caution: #a85c00;
-  --danger: #b3261e;
+  --danger: #c0271f;
 
-  --veil-a: #dce6ed;
-  --veil-b: #c2d2de;
+  --veil-a: #e7eaf1;
+  --veil-b: #d3d9e4;
   --on-teal: #ffffff;
 
-  --bar: 64px;
+  /* What the floating tab bar occupies: its 62px plus the gap under it
+   * plus clearance, so the last control on a screen is not half behind
+   * the glass. Both the page padding and the toast measure from this. */
+  --bar: 90px;
+  --r-sm: 14px;
+  --r: 22px;
+  --r-lg: 30px;
+  /* Layered rather than a single blur: a tight contact shadow holds the
+   * card to the page, a wide soft one gives it height. One shadow does
+   * one or the other and the surface reads either flat or detached. */
+  --shadow: 0 1px 2px rgba(18, 24, 38, .04), 0 6px 16px -4px rgba(18, 24, 38, .08);
+  --shadow-lg: 0 2px 6px rgba(18, 24, 38, .06), 0 28px 56px -12px rgba(18, 24, 38, .18);
+  --shadow-press: 0 1px 2px rgba(18, 24, 38, .06);
+  --ring: 0 0 0 4px color-mix(in srgb, var(--teal) 16%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --page: #0c141b;
-    --panel: #121c25;
-    --panel-2: #18242f;
-    --line: #24323e;
-    --ink: #e8f0f6;
-    --ink-soft: #a7b8c6;
-    --muted: #78899a;
-    --teal: #4fd1c5;
-    --teal-deep: #6fe0d5;
-    --teal-soft: #10292b;
-    --accent: #7fb2dc;
-    --accent-soft: #132532;
+    --page: #0b1018;
+    --panel: #131a26;
+    --panel-2: #1a2231;
+    --line: #26303f;
+    --ink: #e9eef7;
+    --ink-soft: #a3b0c4;
+    --muted: #74819a;
+    /* Deep rose is unreadable on a dark ground, so the pressable colour
+     * lightens here and the text that sits on it darkens with it. */
+    --teal: #ff6b85;
+    --teal-deep: #ff8097;
+    --teal-soft: #2a1520;
+    --accent: #8ab0ff;
+    --accent-soft: #141d2e;
     --verified: #5fc79b;
     --caution: #d99a4e;
     --danger: #e68b84;
-    --veil-a: #1e2c37;
-    --veil-b: #17232c;
-    --on-teal: #06211f;
+    --veil-a: #1c2533;
+    --veil-b: #161d29;
+    --on-teal: #2a0710;
+    --grad-soft: linear-gradient(135deg, #251320 0%, #241a14 100%);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, .5), 0 24px 48px rgba(0, 0, 0, .45);
   }
 }
 
@@ -91,6 +119,7 @@
 html, body {
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
   background: var(--page);
   color: var(--ink);
   font-family: 'Cairo', 'Noto Sans Arabic', system-ui, sans-serif;
@@ -139,12 +168,15 @@ html, body {
 
 /* ---------------- type ---------------- */
 
+/* Arabic carries less of its identity in letterform than Latin does and
+ * more in weight and spacing, so the scale leans on size and weight
+ * contrast rather than on tracking, which Cairo does not take well. */
 h1.hero {
-  font-size: 40px; font-weight: 700; text-align: center;
-  margin: 0; line-height: 1.35; letter-spacing: -.01em;
+  font-size: clamp(34px, 10vw, 46px); font-weight: 700; text-align: center;
+  margin: 0; line-height: 1.3; letter-spacing: -.015em;
 }
-h3.hd { font-size: 23px; font-weight: 700; margin: 0 0 6px; line-height: 1.45; }
-p.sub { margin: 0 0 18px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.8; }
+h3.hd { font-size: 25px; font-weight: 700; margin: 0 0 8px; line-height: 1.4; letter-spacing: -.01em; }
+p.sub { margin: 0 0 20px; color: var(--ink-soft); font-size: 15px; line-height: 1.85; }
 p.body { font-size: 16px; line-height: 1.95; margin: 0 0 14px; }
 p.note { font-size: 13.5px; line-height: 1.8; color: var(--ink-soft); margin: 10px 0 0; }
 
@@ -152,19 +184,26 @@ p.note { font-size: 13.5px; line-height: 1.8; color: var(--ink-soft); margin: 10
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; font-weight: 700; color: var(--ink-soft); margin: 0 0 10px;
 }
-.eyebrow::before { content: ''; width: 14px; height: 2px; background: var(--teal); flex: none; }
+.eyebrow::before {
+  content: ''; width: 16px; height: 3px; border-radius: 2px;
+  background: var(--grad); flex: none;
+}
 
 /* ---------------- surfaces ---------------- */
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(15, 32, 51, .05);
+  /* A hairline AND a shadow double-draws the edge. The shadow carries
+   * the separation; the border is a faint inset that only shows where
+   * the shadow cannot, such as a white card on a white page. */
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  border-radius: var(--r);
+  padding: 18px;
+  box-shadow: var(--shadow);
 }
 .panel + .panel { margin-top: 12px; }
 .panel.tinted { background: var(--teal-soft); }
+.panel.warm { background: var(--grad-soft); border-color: transparent; }
 .panel.accent { border-inline-start: 3px solid var(--teal); }
 .panel.accent-alt { border-inline-start: 3px solid var(--accent); }
 .panel.flat { box-shadow: none; }
@@ -179,25 +218,53 @@ hr.rule { height: 1px; background: var(--line); border: 0; margin: 12px 0; }
 
 .btn {
   display: block; width: 100%; font: inherit; font-size: 16px; font-weight: 600;
-  padding: 15px; border-radius: 14px; border: 0; cursor: pointer;
+  padding: 16px; border-radius: var(--r-sm); border: 0; cursor: pointer;
   background: var(--teal); color: var(--on-teal);
+  box-shadow: 0 1px 2px rgba(18, 24, 38, .08), 0 10px 20px -8px color-mix(in srgb, var(--teal) 55%, transparent);
+  transition: transform .14s cubic-bezier(.2, .8, .2, 1), box-shadow .14s ease, filter .14s ease;
 }
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: translateY(1px) scale(.99); box-shadow: var(--shadow-press); }
+.btn:focus-visible { outline: 0; box-shadow: var(--ring), var(--shadow); }
+/* The gradient carries no text it needs to be read against — the label
+ * sits in a text token on top of a solid layer. */
+.btn.grad { background: var(--grad); color: #fff; }
 .btn:active { background: var(--teal-deep); }
 .btn[disabled] { opacity: .45; }
-.btn.ghost { background: transparent; color: var(--ink); border: 1.2px solid var(--line); }
-.btn.quiet { background: transparent; color: var(--teal); border: 0; font-size: 14.5px; padding: 10px; }
+/* The primary button's lift comes from a tinted shadow. On a
+ * transparent variant that shadow has nothing to sit under and renders
+ * as a glowing rectangle floating off the panel. */
+.btn.ghost, .btn.quiet, .btn.danger, .btn.grad.quiet { box-shadow: none; }
+.btn.ghost {
+  background: transparent; color: var(--ink);
+  border: 1.2px solid var(--line);
+}
+.btn.ghost:hover { background: var(--panel-2); border-color: var(--teal); filter: none; }
+.btn.quiet {
+  background: transparent; color: var(--teal); border: 0;
+  font-size: 14.5px; padding: 10px;
+}
+.btn.quiet:hover { background: var(--teal-soft); filter: none; }
 .btn.danger { background: transparent; color: var(--danger); border: 1.2px solid var(--danger); }
+.btn.ghost:active, .btn.quiet:active, .btn.danger:active { box-shadow: none; }
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn { flex: 1; }
 .btn-row .btn.wide { flex: 2; }
 
 .chip {
   font: inherit; font-size: 14.5px; font-weight: 500;
-  padding: 9px 14px; border-radius: 999px;
+  padding: 10px 15px; border-radius: 999px;
   border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, transform .12s ease;
 }
-.chip[aria-pressed='true'] { background: var(--teal-soft); border-color: var(--teal); }
+.chip:hover { border-color: color-mix(in srgb, var(--teal) 45%, var(--line)); }
+.chip:active { transform: scale(.97); }
+.chip[aria-pressed='true'] {
+  background: var(--teal-soft); border-color: var(--teal);
+  color: var(--teal); font-weight: 600;
+}
+.chip:focus-visible { outline: 0; box-shadow: var(--ring); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 input[type='text'], input[type='date'], input[type='tel'], textarea {
@@ -320,18 +387,25 @@ input[type='tel'] { text-align: right; }
 
 /* ---------------- bottom bar ---------------- */
 
+/* Floated off the bottom edge rather than welded to it. It reads as a
+ * control that belongs to the app rather than as part of the phone, and
+ * the gap underneath keeps it clear of the home indicator. */
 .tabbar {
-  position: fixed; bottom: 0; inset-inline: 0;
-  max-width: 520px; margin: 0 auto;
-  height: calc(var(--bar) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position: fixed; inset-inline: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  max-width: 460px; margin: 0 auto;
+  width: calc(100% - 28px);
+  height: 62px;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
   /* One column per tab, derived from the count rather than hard-coded:
      a fifth tab was added and the grid still said four, so it wrapped
      onto a second row and sat on top of the page. */
   display: none; grid-template-columns: repeat(var(--tabs, 5), 1fr);
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   z-index: 20;
 }
 .tabbar.on { display: grid; }
@@ -341,7 +415,18 @@ input[type='tel'] { text-align: right; }
   font: inherit; font-size: 10.5px; color: var(--muted); padding: 0 2px;
   min-width: 0; overflow: hidden; white-space: nowrap;
 }
-.tabbar button[aria-current='true'] { color: var(--teal); }
+.tabbar button {
+  position: relative;
+  transition: color .16s ease;
+}
+.tabbar button[aria-current='true'] { color: var(--teal); font-weight: 600; }
+/* A short gradient bar above the current tab: the brand appears exactly
+ * where the eye already is, instead of being painted across the chrome. */
+.tabbar button[aria-current='true']::before {
+  content: ''; position: absolute; top: 0;
+  width: 22px; height: 3px; border-radius: 0 0 3px 3px;
+  background: var(--grad);
+}
 
 /* ---------------- misc ---------------- */
 
@@ -523,3 +608,478 @@ img[data-zoom] { cursor: zoom-in; }
 
 .match-overlay { cursor: default; }
 .match-overlay .btn { min-width: 220px; }
+
+/* =====================================================================
+ * The review desk
+ *
+ * The desk is a separate surface, not a skin on the member app. Two
+ * reasons, in order of importance:
+ *
+ *   1. A reviewer must never be in doubt about which side of the glass
+ *      they are on. Reading someone's conversation and reading your own
+ *      should not look alike.
+ *   2. It is used at a desk, on a wide screen, for an hour at a time.
+ *      The member app is a phone screen and should stay one.
+ *
+ * So the desk pins itself dark regardless of the OS theme, and lays out
+ * as a console — rail, content, and room for a thread beside a list —
+ * once there is width for it. Below that width it degrades to the same
+ * single column as everything else, because a reviewer with a phone is
+ * still a reviewer.
+ * ===================================================================== */
+
+:root[data-surface='desk'] {
+  --page: #0b1220;
+  --panel: #141c2b;
+  --panel-2: #1b2435;
+  --line: #27324a;
+  --ink: #e9eef7;
+  --ink-soft: #9fadc4;
+  --muted: #72809a;
+
+  --teal: #ff6b85;
+  --teal-deep: #ff8097;
+  --teal-soft: #2a1521;
+  --on-teal: #2a0710;
+  --accent: #8ab0ff;
+  --accent-soft: #151f33;
+  --verified: #4bbd8a;
+  --caution: #e0a455;
+  --danger: #ef8a84;
+  --veil-a: #1c2535;
+  --veil-b: #151d2a;
+  --grad-soft: linear-gradient(135deg, #241523 0%, #241b15 100%);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 8px 24px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, .5), 0 28px 56px rgba(0, 0, 0, .5);
+
+  /* Chart hues. Validated as a set against this surface under the
+   * all-pairs rule (small multiples read side by side): rose, blue and
+   * amber clear the lightness band, the chroma floor, CVD separation and
+   * 3:1 contrast. A fourth hue does not — green beside rose collapses to
+   * ΔE 1.6 for a deutan reader — so a fourth measure gets a facet of its
+   * own rather than a new colour. */
+  --viz-1: #d55181;
+  --viz-2: #3987e5;
+  --viz-3: #c98500;
+
+  /* Reserved. Never used as a series colour, and never alone: every one
+   * of these ships beside a word. */
+  --st-good: #0ca30c;
+  --st-warn: #fab219;
+  --st-serious: #ec835a;
+  --st-crit: #d03b3b;
+}
+
+:root[data-surface='desk'] body { background: var(--page); }
+
+/* ---------------- console shell ---------------- */
+
+.desk-shell { min-height: 100dvh; }
+
+.desk-top {
+  position: sticky; top: 0; z-index: 12;
+  display: flex; align-items: center; gap: 14px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 20px 12px;
+  background: color-mix(in srgb, var(--page) 86%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.desk-top .mark {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  background: var(--grad); display: grid; place-items: center;
+}
+.desk-top h2 { margin: 0; font-size: 16.5px; font-weight: 700; }
+.desk-top .who { margin-inline-start: auto; font-size: 12.5px; color: var(--muted); }
+
+/* The rail. A horizontal scroller on a phone, a column on a desk. */
+.rail { display: flex; gap: 6px; overflow-x: auto; padding: 12px 20px; scrollbar-width: none; }
+.rail::-webkit-scrollbar { display: none; }
+.rail a, .rail button {
+  font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 13px; border-radius: 11px; border: 0; cursor: pointer;
+  background: transparent; color: var(--ink-soft); text-decoration: none;
+}
+.rail button:hover { background: var(--panel-2); color: var(--ink); }
+.rail button[aria-current='true'] {
+  background: var(--panel); color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rail .badge {
+  font-size: 11.5px; font-weight: 700; min-width: 19px; text-align: center;
+  padding: 1px 6px; border-radius: 999px;
+  background: var(--teal); color: var(--on-teal);
+}
+.rail .badge.quiet { background: var(--panel-2); color: var(--muted); }
+
+.desk-body { padding: 4px 20px 40px; }
+
+@media (min-width: 980px) {
+  :root[data-surface='desk'] #app { max-width: none; padding-bottom: 0; }
+  /* Three classes, because `.screen.on` sets display:block and a single
+   * class would lose to it. */
+  .screen.on.desk-shell {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 1fr);
+    grid-template-areas: 'top top' 'rail body';
+    align-content: start;
+  }
+  .desk-top { grid-area: top; }
+  .rail {
+    grid-area: rail; display: block; overflow: visible;
+    border-inline-end: 1px solid var(--line);
+    min-height: calc(100dvh - 60px); padding: 16px 12px;
+  }
+  .rail button { width: 100%; justify-content: flex-start; margin-bottom: 2px; }
+  .rail .badge { margin-inline-start: auto; }
+  .desk-body { grid-area: body; padding: 22px 28px 60px; max-width: 1180px; }
+}
+
+/* ---------------- tiles ---------------- */
+
+.tiles {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+}
+.tile {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 15px 16px 10px; overflow: hidden;
+}
+.tile .label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+/* The hero number. Tabular figures so a tile that ticks from 9 to 10
+ * does not shift its own width. */
+.tile .figure {
+  font-size: 31px; font-weight: 700; line-height: 1.2; margin-top: 4px;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
+.tile .foot { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile.press { cursor: pointer; text-align: start; width: 100%; font: inherit; color: inherit; }
+.tile.press:hover { border-color: var(--teal); }
+.tile .spark { display: block; margin: 8px -16px -10px; width: calc(100% + 32px); }
+
+/* A status word, never a status colour on its own. */
+.state {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--panel-2); color: var(--ink-soft);
+}
+.state .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.state.good .dot { background: var(--st-good); }
+.state.warn .dot { background: var(--st-warn); }
+.state.serious .dot { background: var(--st-serious); }
+.state.crit .dot { background: var(--st-crit); }
+.state.crit { color: var(--danger); }
+
+/* ---------------- bars ---------------- */
+
+.bars { display: grid; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: 112px 1fr 46px; align-items: center; gap: 10px; }
+.bar-row .name { font-size: 13.5px; color: var(--ink-soft); }
+/* Both are spans, so both need laying out as blocks — an inline span
+ * ignores the height and the percentage width, which renders every bar
+ * as an empty track and makes the chart say nothing. */
+.bar-row .track {
+  display: block; height: 9px; border-radius: 5px;
+  background: var(--panel-2); overflow: hidden;
+}
+/* Rounded data-end, anchored to the baseline at the inline start. */
+.bar-row .fill {
+  display: block; height: 100%; border-radius: 5px;
+  background: var(--viz-2); min-width: 3px;
+}
+.bar-row .n { font-size: 13px; font-variant-numeric: tabular-nums; text-align: end; color: var(--ink); }
+
+/* An ordered scale gets one hue, light to dark — never three hues, which
+ * would say the tiers are unrelated categories. */
+.bar-row.step-1 .fill { background: #9dc0f2; }
+.bar-row.step-2 .fill { background: #5b94e4; }
+.bar-row.step-3 .fill { background: #2a63b8; }
+
+/* ---------------- conversation monitor ---------------- */
+
+.convo-list { display: grid; gap: 10px; }
+.convo {
+  width: 100%; font: inherit; color: inherit; text-align: start; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 14px 15px;
+  display: grid; gap: 8px;
+}
+.convo:hover { border-color: var(--teal); }
+.convo .pair { display: flex; align-items: center; gap: 8px; font-size: 15.5px; font-weight: 600; }
+.convo .pair .vs { color: var(--muted); font-weight: 400; font-size: 13px; }
+.convo .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+
+/* How hard each side pushed, as a count beside a word. The number is the
+ * encoding; the tint only ranks it. */
+.attempts { display: flex; gap: 6px; align-items: center; }
+.attempts b { font-variant-numeric: tabular-nums; }
+
+.thread { display: grid; gap: 10px; padding: 4px 0; }
+.msg { max-width: min(78%, 520px); padding: 11px 14px; border-radius: 16px; font-size: 14.5px; line-height: 1.75; }
+.msg.a { background: var(--panel-2); border-start-start-radius: 5px; justify-self: start; }
+.msg.b { background: var(--accent-soft); border-start-end-radius: 5px; justify-self: end; }
+.msg .stamp { display: block; font-size: 11px; color: var(--muted); margin-top: 5px; }
+.msg.stripped { box-shadow: inset 0 0 0 1.5px var(--st-serious); }
+/* Its own line. Inline, it ran on from the message body and read as
+ * something the member wrote rather than as the filter's note. */
+.msg .caught {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 700; color: var(--caution); margin-top: 6px;
+}
+
+/* Which thread is open. Without it, a reviewer who scrolls the list
+ * loses track of what they are reading. */
+.convo[aria-current='true'] {
+  border-color: var(--teal);
+  box-shadow: inset 2px 0 0 var(--teal);
+}
+
+@media (min-width: 1180px) {
+  .monitor { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .monitor .pane { position: sticky; top: 76px; max-height: calc(100dvh - 100px); overflow-y: auto; }
+}
+
+/* ---------------- the review card stack ---------------- */
+
+/* Capped and centred: a review card is a portrait of a person, and
+ * stretched to a 1000px console it stops being one. */
+.stack {
+  position: relative; height: 486px; margin: 6px auto 14px;
+  max-width: 420px;
+}
+.stack .card {
+  position: absolute; inset: 0;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+  transition: transform .28s cubic-bezier(.2, .8, .2, 1), opacity .28s ease;
+}
+/* The two behind are visible but inert — the stack says "there are more"
+ * without inviting a tap on a card that is not on top. */
+/* Absolutely-positioned siblings paint in document order, so without
+ * these the third card covers the first and all three sets of text
+ * render on top of each other. The top card has to be last to paint. */
+.stack .card:nth-child(1) { z-index: 3; }
+.stack .card:nth-child(2) {
+  z-index: 2; transform: scale(.955) translateY(14px); opacity: .6; pointer-events: none;
+}
+.stack .card:nth-child(3) {
+  z-index: 1; transform: scale(.915) translateY(27px); opacity: .32; pointer-events: none;
+}
+.stack .card:nth-child(n+4) { display: none; }
+.stack .card.gone-yes { transform: translateX(-130%) rotate(-14deg); opacity: 0; }
+.stack .card.gone-no  { transform: translateX(130%) rotate(14deg); opacity: 0; }
+
+.card .shot { position: relative; flex: 1; min-height: 0; background: var(--panel-2); }
+.card .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .shot .none { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.card .shot::after {
+  content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 58%;
+  background: linear-gradient(to top, rgba(8, 12, 20, .92), transparent);
+  pointer-events: none;
+}
+.card .over { position: absolute; inset-inline: 16px; bottom: 14px; color: #fff; z-index: 1; }
+.card .over .nm { font-size: 24px; font-weight: 700; text-shadow: 0 1px 10px rgba(0,0,0,.5); }
+.card .over .sub { font-size: 13.5px; opacity: .9; margin-top: 2px; }
+.card .facts { padding: 13px 16px; display: grid; gap: 6px; border-top: 1px solid var(--line); }
+.card .facts .ln { display: flex; gap: 10px; font-size: 13.5px; }
+.card .facts .ln span:first-child { color: var(--muted); min-width: 92px; }
+
+.verdict {
+  position: absolute; top: 20px; z-index: 2;
+  font-size: 19px; font-weight: 800; letter-spacing: .04em;
+  padding: 7px 14px; border-radius: 10px; border: 3px solid currentColor;
+  opacity: 0; transition: opacity .12s ease;
+}
+.verdict.yes { inset-inline-start: 20px; color: var(--st-good); transform: rotate(-11deg); }
+.verdict.no  { inset-inline-end: 20px; color: var(--st-crit); transform: rotate(11deg); }
+.card[data-lean='yes'] .verdict.yes { opacity: 1; }
+.card[data-lean='no'] .verdict.no { opacity: 1; }
+
+.deck-controls { display: flex; justify-content: center; gap: 14px; }
+.round {
+  width: 62px; height: 62px; border-radius: 50%; cursor: pointer;
+  border: 1.5px solid var(--line); background: var(--panel);
+  display: grid; place-items: center; color: var(--ink);
+  box-shadow: var(--shadow); transition: transform .12s ease;
+}
+.round:active { transform: scale(.92); }
+.round.no { color: var(--st-crit); }
+.round.yes { color: var(--st-good); }
+.round.big { width: 72px; height: 72px; }
+
+/* ---------------- table ---------------- */
+
+.grid-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.grid-table th {
+  text-align: start; font-size: 12px; font-weight: 700; color: var(--muted);
+  padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.grid-table td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.grid-table tr:last-child td { border-bottom: 0; }
+.grid-table .num { font-variant-numeric: tabular-nums; text-align: end; }
+.scroll-x { overflow-x: auto; }
+
+/* Two charts side by side once there is room, stacked before that. The
+ * funnel and the membership split are read against each other — how many
+ * got in, and how many of them pay. */
+@media (min-width: 880px) {
+  .desk-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* =====================================================================
+ * Hero surfaces
+ *
+ * The welcome and the empty states were a white page with a paragraph on
+ * it. The brand lives in a gradient, so these screens get a wash of it —
+ * behind the content, never under text that has to be read against it.
+ * ===================================================================== */
+
+.aurora { position: relative; isolation: isolate; }
+/* Fixed, not absolute with negative insets: an absolutely-positioned
+ * wash that hangs past the edges widens the scrollable area and shoves
+ * the whole page sideways. A fixed element contributes no overflow. */
+.aurora::before {
+  content: ''; position: fixed; z-index: -1;
+  inset-inline: 0; top: 0; height: 440px;
+  background:
+    radial-gradient(60% 70% at 76% 2%, color-mix(in srgb, #ff4f6e 24%, transparent), transparent 72%),
+    radial-gradient(58% 66% at 20% 0%, color-mix(in srgb, #ff8a4c 20%, transparent), transparent 74%);
+  pointer-events: none;
+}
+/* Dark grounds need less of it: the same wash that reads as warmth on
+ * white reads as a smudge on near-black. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .aurora::before { opacity: .5; }
+}
+
+.brandmark {
+  width: 56px; height: 56px; border-radius: 19px;
+  background: var(--grad); display: grid; place-items: center;
+  margin: 0 auto;
+  box-shadow: 0 10px 28px -8px color-mix(in srgb, #ff4f6e 60%, transparent);
+}
+
+/* The gradient as type, for the one word per screen that carries it. */
+.grad-text {
+  background: var(--grad);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+}
+
+/* ---------------- list rows ---------------- */
+
+/* Used where a panel-per-row was too much furniture for what is really
+ * a list: photo requests, sessions, admirers. */
+.row-card {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 16px; border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  box-shadow: var(--shadow);
+}
+.row-card + .row-card { margin-top: 9px; }
+.row-card .grow { flex: 1; min-width: 0; }
+.row-card .ttl { font-size: 15.5px; font-weight: 600; }
+.row-card .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.avatar {
+  width: 46px; height: 46px; border-radius: 15px; flex: none;
+  background: var(--panel-2); display: grid; place-items: center;
+  overflow: hidden; color: var(--muted); font-weight: 700; font-size: 17px;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------------- desk, second pass ---------------- */
+
+/* The console was styled like the member app in dark clothes: same
+ * radii, same padding, same airiness. A review desk is read for an hour
+ * at a time and wants density — more rows on screen, tighter corners,
+ * and headings that stay put while the list under them scrolls. */
+:root[data-surface='desk'] {
+  --r-sm: 11px;
+  --r: 15px;
+  --r-lg: 22px;
+}
+:root[data-surface='desk'] .panel { padding: 15px 16px; }
+:root[data-surface='desk'] .panel + .panel { margin-top: 10px; }
+
+/* Only section headings stick. An eyebrow inside a panel is a label,
+ * not a heading, and giving it the page-coloured backdrop painted a dark
+ * band across the top of whatever panel it sat in. */
+:root[data-surface='desk'] .desk-body > .eyebrow {
+  position: sticky; top: 58px; z-index: 5;
+  padding: 10px 0 8px; margin: 0 0 8px;
+  background: linear-gradient(to bottom,
+    var(--page) 55%, color-mix(in srgb, var(--page) 0%, transparent));
+  font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+/* Tiles: the number is the content, so it gets the room. */
+:root[data-surface='desk'] .tile { padding: 16px 17px 11px; }
+:root[data-surface='desk'] .tile .figure { font-size: 34px; }
+.tile.press { transition: border-color .14s ease, transform .14s ease, background .14s ease; }
+.tile.press:hover { transform: translateY(-2px); background: var(--panel-2); }
+.tile.press:active { transform: translateY(0); }
+
+/* A tile whose count is zero is good news and should recede rather than
+ * shout the same as a tile with nine things waiting. */
+.tile.press.clear .figure { color: var(--muted); font-weight: 600; }
+
+.convo { transition: border-color .14s ease, transform .14s ease, background .14s ease; }
+.convo:hover { transform: translateX(-2px); background: var(--panel-2); }
+
+.rail button { transition: background .14s ease, color .14s ease; }
+
+/* The one place the brand belongs on the console: the current section. */
+.rail button[aria-current='true'] {
+  position: relative;
+  background: var(--panel); color: var(--ink); font-weight: 600;
+}
+.rail button[aria-current='true']::before {
+  content: ''; position: absolute; inset-inline-start: 0; top: 22%; bottom: 22%;
+  width: 3px; border-radius: 3px; background: var(--grad);
+}
+@media (max-width: 979px) {
+  .rail button[aria-current='true']::before {
+    inset-inline: 22%; top: auto; bottom: 0; height: 3px; width: auto;
+  }
+}
+
+/* ---------------- the worklist ----------------
+ *
+ * These were stat tiles, which was the wrong form: a stat tile answers
+ * "how is it going", and these answer "what do I have to do". Same
+ * numbers, different question, so they get rows with a count, a label
+ * and a way in — and the ones at zero recede instead of competing with
+ * the ones that need a person.
+ */
+.worklist { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(236px, 1fr)); }
+.work {
+  display: flex; align-items: center; gap: 13px;
+  width: 100%; font: inherit; color: inherit; text-align: start; cursor: pointer;
+  padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  transition: background .14s ease, border-color .14s ease, transform .14s ease;
+}
+.work:hover { background: var(--panel-2); border-color: var(--teal); transform: translateY(-1px); }
+.work:focus-visible { outline: 0; box-shadow: var(--ring); }
+.work .n {
+  min-width: 38px; height: 38px; border-radius: 11px; flex: none;
+  display: grid; place-items: center;
+  font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--teal) 16%, transparent); color: var(--teal);
+}
+.work .l { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; }
+.work .l small { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+/* Mirrored: the shared chevron points the way "back" does, which in an
+ * RTL layout is rightward. Drilling into a queue goes the other way. */
+.work .go { color: var(--muted); flex: none; transform: scaleX(-1); display: grid; }
+
+/* Nothing waiting is good news. It should not look like one more number
+ * demanding attention. */
+.work.clear { opacity: .62; }
+.work.clear .n { background: var(--panel-2); color: var(--muted); }
+.work.clear:hover { opacity: 1; }
