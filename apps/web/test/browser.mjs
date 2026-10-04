@@ -62,6 +62,15 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
+// Each section writes config.js and unlinks it at the end, so a section
+// that throws leaves one behind — and then the next run's first section,
+// which is the "no backend configured" one, fails for a reason that has
+// nothing to do with what broke. Clear it up front and on the way out.
+const CONFIG = path.join(ROOT, 'config.js');
+const clearConfig = () => { try { fs.unlinkSync(CONFIG); } catch { /* none */ } };
+clearConfig();
+process.on('exit', clearConfig);
+
 const browser = await chromium.launch(
   process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const fails = [];
@@ -211,6 +220,28 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
                     practice_level: 'practicing', timeline: 'within_1_year',
                     willing_to_relocate: false, family_aware: true, photos });
     }
+    // The dashboard is where a reviewer now lands, so this section needs
+    // it answered too — it is the first screen of the flow under test.
+    if (url.includes('/rpc/admin_overview')) {
+      const waiting = Object.values(people)
+        .filter((x) => ['applying', 'pending_review'].includes(x.status)).length;
+      const day = (back) => {
+        const d = new Date();
+        d.setDate(d.getDate() - back);
+        return d.toISOString().slice(0, 10);
+      };
+      return json({
+        funnel: { applying: waiting, pending_review: 0, admitted: 1,
+                  rejected: 0, shadow_limited: 0, banned: 0 },
+        queue: { applications: waiting, photos: 0, requests: 0, reports: 0,
+                 meetings: 0, releases: 0, flagged_chats: 0 },
+        longest_wait_hours: 4,
+        series: Array.from({ length: 14 }, (unused, i) => ({
+          day: day(13 - i), signups: i % 3, matches: 0, messages: i })),
+        memberships: { basic: 2 }, cities: [], outcomes: {},
+        totals: { members: 3, matches: 0, messages: 0, releases: 0, reviewers: 1 },
+      });
+    }
     if (url.includes('/rpc/admin_queue')) {
       const filter = route.request().postDataJSON()?.filter || 'waiting';
       const rows = Object.entries(people)
@@ -265,38 +296,81 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   await page.waitForTimeout(700);
 
   check(errors.length === 0, `no page errors on the desk ${errors.join('; ')}`);
-  check(page.url().includes('admin'), 'a reviewer lands on the review desk, not the welcome screen');
+  // A reviewer's home is the dashboard — what is waiting, across every
+  // queue — rather than whichever queue happened to be first.
+  check(page.url().includes('/desk'),
+        'a reviewer lands on the dashboard, not the welcome screen');
+  check((await page.locator('#app').innerText()).includes('ينتظر قراراً'),
+        'which opens on what is waiting for a decision');
+  await page.locator('.work[data-go="admin"]').click();
+  await page.waitForTimeout(800);
+  check(page.url().includes('/admin'), 'and the worklist takes them into a queue');
 
+  // ── the card stack ──
+  // The waiting queue opens as a deck: one application at a time, which
+  // is a better decision than the fortieth row of a list.
+  check(await page.locator('#deck .card').count() >= 2, 'the waiting queue opens as a card stack');
+  check(await page.locator('#deck .card').first().getAttribute('data-card') === 'u-laila',
+        'with the newest application on top');
+  check(await page.locator('#deck .card').first().locator('.verdict.yes').count() === 1,
+        'and a verdict stamp ready on the top card');
+
+  // Admit is one tap; the card leaves and the next comes forward.
+  await page.locator('[data-deck="admit"]').click();
+  await page.waitForTimeout(500);
+  check(decisions.some((d) => d.target === 'u-laila' && d.action === 'admit'),
+        'admit takes one tap, because admitting is the reversible one');
+  check(await page.locator('#deck .card').first().getAttribute('data-card') === 'u-omar',
+        'and the next application comes forward');
+
+  // Reject asks twice: a swipe is a cheap gesture, being turned away
+  // from a marriage platform is not a cheap outcome.
+  await page.locator('[data-deck="reject"]').click();
+  await page.waitForTimeout(250);
+  check(!decisions.some((d) => d.target === 'u-omar'),
+        'one tap on reject decides nothing');
+  await page.locator('[data-deck="reject"]').click();
+  await page.waitForTimeout(500);
+  check(decisions.some((d) => d.target === 'u-omar' && d.action === 'reject'),
+        'the second tap rejects it');
+
+  // The reviewer's own application is the only card left, and the deck
+  // must refuse it the same way the list does.
+  check(await page.locator('#deck .card').first().getAttribute('data-card') === 'u-boss',
+        "the reviewer's own application is what is left");
+  await page.locator('[data-deck="admit"]').click();
+  await page.waitForTimeout(400);
+  check(!decisions.some((d) => d.target === 'u-boss'),
+        'and the deck will not let a reviewer admit themselves');
+
+  // ── the same queue as a list ──
+  await page.locator('[data-queue-view="list"]').click();
+  await page.waitForTimeout(400);
   const deskText = await page.locator('#app').innerText();
-  check(deskText.includes('ليلى') && deskText.includes('عمر'), 'both applicants are listed');
+  check(await page.locator('#deck').count() === 0, 'the view can be switched to a list');
   check(await page.locator('[data-decide-user][data-id="u-boss"]').count() === 0,
         'the reviewer is offered no decision on their own row');
   check(deskText.includes('هذا طلبك أنت'),
         'it says why, instead of letting the server refuse in English');
-
-  // Admit one, reject the other.
-  await page.locator('[data-decide-user="admit"][data-id="u-laila"]').click();
-  await page.waitForTimeout(400);
-  check(decisions.some((d) => d.target === 'u-laila' && d.action === 'admit'),
-        'admitting sends the decision to the server');
-
-  await page.locator('[data-decide-user="reject"][data-id="u-omar"]').click();
-  await page.waitForTimeout(400);
-  check(decisions.some((d) => d.target === 'u-omar' && d.action === 'reject'), 'so does rejecting');
-  const remaining = await page.locator('#app').innerText();
-  check(!remaining.includes('ليلى') && !remaining.includes('عمر'),
+  check(!deskText.includes('ليلى') && !deskText.includes('عمر'),
         'decided applicants leave the waiting queue');
-  check(remaining.includes('المالك'),
-        "and the reviewer's own undecidable application is what is left");
+  check(deskText.includes('المالك'),
+        "and the reviewer's own undecidable application is still there");
 
   await page.locator('[data-queue="admitted"]').click();
   await page.waitForTimeout(400);
   check((await page.locator('#app').innerText()).includes('ليلى'),
         'the admitted filter shows the person just admitted');
 
-  // The directory now has a real member in it.
-  await page.locator('[data-tab="today"]').click();
-  await page.waitForTimeout(500);
+  // The desk has no member tab bar — it is a console, and the bar sat on
+  // top of its content at width. A reviewer leaves by the rail's last
+  // entry, which is what this clicks.
+  check(await page.locator('#tabbar.on').count() === 0,
+        'the member tab bar is not on the desk');
+  await page.locator('.rail button[data-go="today"]').click();
+  await page.waitForTimeout(600);
+  check(await page.locator('#tabbar.on').count() === 1,
+        'and comes back when the reviewer returns to the app');
   const todayText = await page.locator('#app').innerText();
   check(todayText.includes('ليلى'), 'the deck shows the admitted member, not the fixture');
   check(!todayText.includes('يوسف'), 'and the fixture candidate is gone');
@@ -795,6 +869,7 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
                     requester_age: 33, owner_id: 'u-x', owner_name: 'ليلى',
                     requests_by_requester: 1 }];
   let memberTier = 'basic';
+  const threadReads = [];
   const acted = [];
 
   await page.route('https://stub.supabase.co/**', async (route) => {
@@ -817,6 +892,7 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
       return json({ waiting: 3, admitted: 2, photos_pending: photos.length,
                     requests_pending: requests.length,
                     reports_open: reports.filter((r) => r.status === 'open').length,
+                    flagged_chats: 2,
                     matches_active: 1, applied_7d: 4, decided_7d: 2,
                     longest_wait_hours: 50, median_decision_hours: 6 });
     }
@@ -854,6 +930,70 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
     if (url.includes('/rpc/schedule_meeting')) {
       acted.push({ what: 'schedule', meeting: body.p_meeting_id, slot: body.p_slot_id });
       return json(null);
+    }
+    if (url.includes('/rpc/admin_overview')) {
+      const day = (back) => {
+        const d = new Date();
+        d.setDate(d.getDate() - back);
+        return d.toISOString().slice(0, 10);
+      };
+      return json({
+        funnel: { applying: 2, pending_review: 1, admitted: 9, rejected: 3,
+                  shadow_limited: 0, banned: 1 },
+        queue: { applications: 3, photos: 2, requests: 1, reports: 1,
+                 meetings: 1, releases: 1, flagged_chats: 2 },
+        longest_wait_hours: 91,
+        series: Array.from({ length: 14 }, (unused, i) => ({
+          day: day(13 - i), signups: i % 4, matches: i % 3, messages: i * 7 })),
+        memberships: { basic: 7, premium: 4, golden: 2 },
+        cities: [{ city: 'رام الله', n: 5 }, { city: 'نابلس', n: 3 }],
+        outcomes: { engaged: 1 },
+        totals: { members: 16, matches: 4, messages: 310, releases: 1, reviewers: 2 },
+      });
+    }
+    if (url.includes('/rpc/admin_conversations')) {
+      const all = [
+        { match_id: 'm-hot', state: 'active', user_a: 'u-laila', user_b: 'u-omar',
+          a_name: 'ليلى', b_name: 'عمر', messages: 14, redactions: 6,
+          a_redactions: 0, b_redactions: 6, reports: 1,
+          last_at: new Date().toISOString(), created_at: new Date().toISOString() },
+        { match_id: 'm-mild', state: 'active', user_a: 'u-laila', user_b: 'u-boss',
+          a_name: 'ليلى', b_name: 'المالك', messages: 6, redactions: 1,
+          a_redactions: 1, b_redactions: 0, reports: 0,
+          last_at: new Date().toISOString(), created_at: new Date().toISOString() },
+      ];
+      const rows = body.filter === 'quiet' ? [] : all;
+      return json({ filter: body.filter,
+                    counts: { flagged: 2, reported: 1, active: 2, quiet: 0, all: 2 },
+                    rows });
+    }
+    if (url.includes('/rpc/admin_conversation_reads')) {
+      return json([{ created_at: new Date().toISOString(), reviewer: 'Owner',
+                     reviewer_email: 'owner@example.com', subject: 'ليلى',
+                     subject_user_id: 'u-laila' }]);
+    }
+    if (url.includes('/rpc/admin_conversation')) {
+      threadReads.push(body.target_match);
+      return json({
+        match_id: body.target_match, state: 'active',
+        created_at: new Date().toISOString(),
+        wali_present: false, contact_unlocked: false,
+        parties: [
+          { user_id: 'u-laila', name: 'ليلى', age: 27, city: 'رام الله',
+            status: 'admitted', membership: 'premium', side: 'a',
+            reports_against: 0, redactions: 0 },
+          { user_id: 'u-omar', name: 'عمر', age: 33, city: 'نابلس',
+            status: 'admitted', membership: 'basic', side: 'b',
+            reports_against: 1, redactions: 6 },
+        ],
+        messages: [
+          { id: 'g1', sender_id: 'u-laila', side: 'a', body: 'أهلاً، كيف حالك؟',
+            redacted: false, categories: [], created_at: new Date().toISOString() },
+          { id: 'g2', sender_id: 'u-omar', side: 'b', body: 'رقمي [حُجب]',
+            redacted: true, categories: ['phone'], created_at: new Date().toISOString() },
+        ],
+        release: null, meeting: null,
+      });
     }
     if (url.includes('/rpc/admin_audit')) {
       return json([
@@ -1028,6 +1168,105 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   check(await page.locator('[data-membership="golden"][aria-pressed="true"]')
               .count() === 1,
         'with the granted tier marked as the current one');
+
+  // ── the dashboard ──
+  await page.goto(`${base}/#/desk`);
+  await page.waitForTimeout(900);
+  const board = await page.locator('#app').innerText();
+  check(errors.length === 0, `no page errors on the dashboard ${errors.join('; ')}`);
+  check(await page.evaluate(() => document.documentElement.dataset.surface) === 'desk',
+        'the desk is its own surface, so a reviewer knows which side of the glass they are on');
+  check(await page.locator('.tile').count() === 4,
+        'the dashboard leads with four trend tiles');
+  // The queues are a worklist, not more stat tiles: a tile answers "how
+  // is it going" and these answer "what do I have to do".
+  check(await page.locator('.work').count() === 7, 'and a worklist of what is waiting');
+  check(await page.locator('.work.clear').count() === 0,
+        'with nothing at zero in this fixture');
+  check(await page.evaluate(() => {
+    const el = document.querySelector('.work[data-go="admin-reports"]');
+    if (!el) return false;
+    el.classList.add('clear');
+    const dim = Number(getComputedStyle(el).opacity) < 1;
+    el.classList.remove('clear');
+    return dim;
+  }), 'and an empty queue recedes rather than competing with a full one');
+
+  // Fourteen days of one measure per chart. Three measures on one axis
+  // would flatten signups to nothing beside messages, and a second axis
+  // would let the shapes be arranged to say anything.
+  check(await page.locator('.tile svg.spark path').count() >= 6,
+        'each trend is its own small chart rather than three series on one axis');
+  check(board.includes('91'), 'the longest wait is shown as a figure');
+  check(board.includes('متأخّر'),
+        'and named in words, so the status is not carried by colour alone');
+
+  check(await page.locator('.bar-row').count() >= 6,
+        'the funnel and the memberships are bars on one shared scale');
+  check(await page.locator('.bar-row.step-1 .fill').count() === 1,
+        'with the ordered membership tiers on one stepped hue, not three colours');
+
+  // The tiles are the way in: a count that is waiting on someone should
+  // be one tap from the thing that is waiting.
+  await page.locator('.work[data-go="admin-chats"]').click();
+  await page.waitForTimeout(900);
+  check(page.url().includes('admin-chats'), 'a worklist row opens its queue');
+
+  // ── the conversation monitor ──
+  const chats = await page.locator('#app').innerText();
+  check(chats.includes('ليلى') && chats.includes('عمر'),
+        'the monitor lists conversations by both names');
+  check(chats.includes('6 محاولة'),
+        'with how many times the filter fired, which is what ranks the list');
+  check(chats.includes('من طرف واحد'),
+        'and says when the pushing is one-sided, which is a different case');
+  check(threadReads.length === 0,
+        'but rendering the list reads nobody\'s messages');
+
+  check((await page.locator('.pane').innerText()).length > 0, 'the list has its own pane');
+  check((await page.locator('#app').innerText()).includes('سجلّ الوصول'),
+        'and the screen says the reading is logged before anything is opened');
+
+  await page.locator('.convo[data-chat="m-hot"]').click();
+  await page.waitForTimeout(900);
+  const thread = await page.locator('#app').innerText();
+  check(threadReads.includes('m-hot'),
+        'opening a conversation is a deliberate tap, and it is what reads the thread');
+  check(await page.locator('.msg').count() === 2, 'the thread renders as a thread');
+  check(await page.locator('.msg.a').count() === 1 && await page.locator('.msg.b').count() === 1,
+        'with each side on its own side');
+  check(await page.locator('.msg.stripped').count() === 1,
+        'the message the filter touched is marked');
+  check(thread.includes('رقم هاتف'),
+        'saying what kind of detail was taken');
+  check(!thread.includes('0599'),
+        'but never the detail itself — it was never stored, so there is nothing to show');
+  check(thread.includes('قراءتك لهذه المحادثة سُجّلت'),
+        'and the reviewer is told, every time, that the read was logged');
+
+  // A filter with nothing in it is the good outcome, and should read
+  // like one rather than like a broken screen.
+  await page.locator('[data-chat-filter="quiet"]').click();
+  await page.waitForTimeout(800);
+  check((await page.locator('#app').innerText()).includes('لا محادثات في هذا التصنيف'),
+        'an empty filter says so');
+  await page.locator('[data-chat-filter="flagged"]').click();
+  await page.waitForTimeout(800);
+  check(await page.locator('.convo').count() === 2, 'and the filters switch the list');
+
+  // ── the rail ──
+  check(await page.locator('.rail button[data-go="admin-chats"] .badge').count() === 1,
+        'the rail badges the monitor with the flagged count');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(400);
+  const railBox = await page.locator('.rail').boundingBox();
+  const bodyBox = await page.locator('.desk-body').boundingBox();
+  check(railBox && bodyBox && railBox.y < bodyBox.y + 10 && railBox.height > 200,
+        'at desk width the rail becomes a sidebar beside the content');
+  check(bodyBox && railBox && bodyBox.x + bodyBox.width <= railBox.x + 2,
+        'and the content sits inline-start of it, which is left in an RTL layout');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
 
   // ---------- 11. search, meetings and the audit trail ----------
   // Same page and stubs as above: these screens are part of the same

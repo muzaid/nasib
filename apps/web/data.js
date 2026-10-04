@@ -394,6 +394,17 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     adminScreenRequest: (id, allow, reason = null) =>
       rpc("admin_screen_photo_request", { request_id: id, allow, reason }),
     adminStats:        () => rpc("admin_stats", {}),
+    adminOverview:     () => rpc("admin_overview", {}),
+
+    // ── Moderation ────────────────────────────────────────────────────
+    // adminConversation reads two people's private messages. The read is
+    // logged server-side against both of them; there is nothing to pass
+    // here to opt out of that, which is the point.
+    adminConversations:     (filter = "flagged") =>
+      rpc("admin_conversations", { filter }),
+    adminConversation:      (matchId) =>
+      rpc("admin_conversation", { target_match: matchId }),
+    adminConversationReads: () => rpc("admin_conversation_reads", {}),
 
     // ── Memberships, the slate, search ────────────────────────────────
     myBenefits:     () => rpc("my_benefits", {}),

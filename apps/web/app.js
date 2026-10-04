@@ -101,6 +101,12 @@ const state = {
   searchFilters: {},
   searchRows: null,
   memberships: null,
+  overview: null,      // the dashboard, in one read
+  chats: null,         // the conversation list
+  chat: null,          // the open thread
+  openChat: null,
+  chatFilter: 'flagged',
+  queueView: 'stack',
   release: null,
   queue: null,
   queueFilter: 'waiting',
@@ -315,18 +321,17 @@ const veil = () => `<div class="veil">${star(34, 'var(--accent)', 0.42)}</div>`;
 const screens = {};
 
 screens.welcome = () => `
-  <div class="screen pad on" style="padding-top:38px">
-    <div class="center">${star(30)}</div>
-    <h1 class="hero" style="margin-top:18px">نصيب</h1>
-    <p style="text-align:center;margin:4px 0 0;font-size:17px;font-weight:500;color:var(--ink-soft)">
-      للزواج، لا لغيره.
+  <div class="screen pad on aurora" style="padding-top:44px">
+    <div class="brandmark">${star(26, '#fff')}</div>
+    <h1 class="hero" style="margin-top:20px">نصيب</h1>
+    <p style="text-align:center;margin:6px 0 0;font-size:18px;font-weight:600">
+      <span class="grad-text">للزواج، لا لغيره.</span>
     </p>
-    ${ornament()}
-    <p class="body" style="text-align:center">
+    <p class="body" style="text-align:center;margin-top:16px;max-width:30ch;margin-inline:auto">
       كل من تقابله هنا مرّ بتحقق من هويته ومراجعة بشرية. التسجيل طلب انضمام، ولا نقبل الجميع.
     </p>
 
-    <div class="panel tight" style="margin-top:18px">
+    <div class="panel tight" style="margin-top:22px">
       <div class="line-item">${ico.face}<span>صورة حيّة تثبت أن الشخص حقيقي</span></div>
       <div class="line-item">${ico.check}<span>مراجعة بشرية لكل ملف</span></div>
       <div class="line-item">${ico.blur}<span>صورك مموّهة دائماً، ولا تُكشف إلا بموافقتك</span></div>
@@ -364,8 +369,8 @@ const chipGroup = (name, options, chosen) => `
 screens.apply = () => {
   const saved = state.application || {};
   return `
-  <div class="screen">
-    ${appbar('طلب الانضمام')}
+  <div class="screen desk-shell">
+    ${deskTop('طلب الانضمام')}
     <div class="progress"><i style="width:43%"></i></div>
     <div class="pad" id="apply-form">
       <h3 class="hd">عن نفسك</h3>
@@ -1163,6 +1168,14 @@ const WORDS = {
     within_6_months: 'خلال 6 شهور', within_1_year: 'خلال سنة',
     within_2_years: 'خلال سنتين', when_right_person: 'عند الشخص المناسب',
   },
+  outcome_kind: {
+    married: 'زواج', engaged: 'خطوبة', ended: 'انتهت',
+    not_compatible: 'غير متوافقين', left_platform: 'ترك التطبيق',
+  },
+  redacted: {
+    phone: 'رقم هاتف', email: 'بريد', handle: 'حساب تواصل',
+    address: 'عنوان', identifier: 'تفاصيل اتصال', url: 'رابط',
+  },
   reason: {
     fake_profile: 'ملف مزيّف', already_married: 'متزوج بالفعل',
     asked_for_money: 'طلب مالاً', harassment: 'مضايقة',
@@ -1662,7 +1675,7 @@ function wireLogin() {
       // applied, the form if they have not, the desk if they happen to
       // be a reviewer signing in on the member screen.
       state.application = await state.db.myApplication();
-      go(state.isAdmin ? 'admin'
+      go(state.isAdmin ? 'desk'
          : !state.application ? 'apply'
          : state.application.status === 'admitted' ? 'today'
          : 'review', { replace: true });
@@ -1695,7 +1708,9 @@ const QUEUE_TABS = [
 // The desk's sections. Counts come from admin_stats, so a reviewer can
 // see where the work is without opening each one.
 const DESK_TABS = [
+  ['desk', 'اللوحة', () => 0],
   ['admin', 'الطلبات', (s) => s?.waiting],
+  ['admin-chats', 'المحادثات', (s) => s?.flagged_chats],
   ['admin-photos', 'الصور', (s) => s?.photos_pending],
   ['admin-requests', 'طلبات الصور', (s) => s?.requests_pending],
   ['admin-reports', 'البلاغات', (s) => s?.reports_open],
@@ -1706,14 +1721,613 @@ const DESK_TABS = [
   ['admin-stats', 'الأرقام', () => 0],
 ];
 
+/** Every desk route, so the shell and the surface token agree on one list. */
+const DESK_ROUTES = new Set([...DESK_TABS.map(([id]) => id), 'member']);
+
+/**
+ * The rail. A horizontal scroller on a phone; a sidebar once there is
+ * width for one. Same markup either way — the console layout is a media
+ * query, not a second component, because two components drift.
+ */
 const deskNav = (current) => `
-  <div class="chips scroll-row" style="margin-bottom:16px">
+  <nav class="rail" aria-label="أقسام المكتب">
     ${DESK_TABS.map(([id, label, count]) => {
-      const n = count(state.stats);
-      return `<button class="chip" data-go="${id}" aria-pressed="${id === current}">${label}${
-        n ? ` (${n})` : ''}</button>`;
+      const n = count(state.stats) || 0;
+      return `<button data-go="${id}" aria-current="${id === current}">
+        <span>${label}</span>
+        ${n ? `<span class="badge">${n}</span>` : ''}
+      </button>`;
     }).join('')}
+    <button data-go="today" style="margin-top:10px;color:var(--muted)">
+      <span>العودة للتطبيق</span>
+    </button>
+  </nav>`;
+
+const deskTop = (title, { side = '' } = {}) => `
+  <header class="desk-top">
+    <button class="iconbtn" data-back aria-label="رجوع">${ico.back}</button>
+    <span class="mark">${star(17, '#fff')}</span>
+    <h2>${title}</h2>
+    <span class="who">${side || escapeAttr(state.email || 'مكتب المراجعة')}</span>
+  </header>`;
+
+/** Morning, afternoon or evening, in Arabic. */
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'صباح الخير' : h < 17 ? 'طاب يومك' : 'مساء الخير';
+}
+
+// ── drawing ───────────────────────────────────────────────────────────
+
+/**
+ * One measure over fourteen days, as an area under a 2px line.
+ *
+ * Deliberately one series per chart. Signups, matches and messages
+ * differ by an order of magnitude or two, and putting them on one axis
+ * flattens the small ones to nothing while a second axis would let the
+ * shapes be arranged to say anything. Three small charts, each with its
+ * own scale and its own label, are the honest form.
+ */
+function sparkline(values, colour) {
+  const w = 220, h = 54, pad = 2;
+  if (!values.length) return '';
+  const top = Math.max(...values, 1);
+  // Mirrored for RTL: time advances in the reading direction, so the
+  // oldest day is at the right edge and today is at the left, where the
+  // eye finishes. The marker sits on today.
+  const x = (i) => w - pad - (i / Math.max(values.length - 1, 1)) * (w - pad * 2);
+  const y = (v) => h - pad - (v / top) * (h - pad * 2 - 6);
+  const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  const area = `${line}L${x(values.length - 1).toFixed(1)},${h}L${x(0).toFixed(1)},${h}Z`;
+  const id = `g${Math.random().toString(36).slice(2, 8)}`;
+  return `
+    <svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+         role="img" aria-label="آخر ١٤ يوماً">
+      <defs>
+        <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${colour}" stop-opacity=".34"/>
+          <stop offset="1" stop-color="${colour}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${area}" fill="url(#${id})"/>
+      <path d="${line}" fill="none" stroke="${colour}" stroke-width="2"
+            stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${x(values.length - 1).toFixed(1)}" cy="${y(values[values.length - 1]).toFixed(1)}"
+              r="3.2" fill="${colour}"/>
+    </svg>`;
+}
+
+/** A tile: the number first, the trend under it, the label above. */
+const tile = (label, figure, { foot = '', spark = '', go = '' } = {}) => `
+  <${go ? 'button' : 'div'} class="tile${go ? ' press' : ''}${
+    go && !Number(figure) ? ' clear' : ''}"${go ? ` data-go="${go}"` : ''}>
+    <div class="label">${label}</div>
+    <div class="figure">${figure}</div>
+    ${foot ? `<div class="foot">${foot}</div>` : ''}
+    ${spark}
+  </${go ? 'button' : 'div'}>`;
+
+/** One thing waiting on a person: the count, what it is, and a way in. */
+const work = (route, label, n, note = '') => `
+  <button class="work${n ? '' : ' clear'}" data-go="${route}">
+    <span class="n">${n}</span>
+    <span class="l">${label}${note && n ? `<small>${note}</small>` : ''}</span>
+    <span class="go">${ico.back}</span>
+  </button>`;
+
+/** Magnitude on one shared scale: horizontal bars, one hue. */
+const barRows = (rows, { step = false } = {}) => {
+  const top = Math.max(...rows.map(([, n]) => n), 1);
+  return `<div class="bars">${rows.map(([name, n], i) => `
+    <div class="bar-row${step ? ` step-${i + 1}` : ''}">
+      <span class="name">${name}</span>
+      <span class="track"><span class="fill" style="width:${
+        Math.max((n / top) * 100, n ? 2 : 0)}%"></span></span>
+      <span class="n">${n}</span>
+    </div>`).join('')}</div>`;
+};
+
+// ── the conversation monitor ───────────────────────────────────────────
+//
+// This screen shows two members' private messages to a reviewer. Three
+// things about how it is built, because the design is the safeguard:
+//
+//   * The default list is `flagged` — pairs the redaction filter fired
+//     on — ranked by how many times it fired. A reviewer who works from
+//     the top of this list is looking at the people most likely to be
+//     working around the platform, not browsing strangers' courtships.
+//   * Opening a thread writes a row against BOTH members. The screen
+//     says so, before the thread, every time. A reviewer who does not
+//     want to be in that log should not open the thread.
+//   * What the filter removed is gone. The badge says a number was sent;
+//     the number was never stored, so there is nothing here to reveal.
+
+const CHAT_FILTERS = [
+  ['flagged',  'مُعلَّمة'],
+  ['reported', 'فيها بلاغ'],
+  ['active',   'نشطة'],
+  ['quiet',    'صامتة'],
+  ['all',      'الكل'],
+];
+
+const attemptState = (n) => (n >= 4 ? 'crit' : n >= 2 ? 'serious' : n >= 1 ? 'warn' : 'good');
+
+screens['admin-chats'] = () => {
+  const q = state.chats;
+  const rows = q?.rows;
+  const filter = state.chatFilter || 'flagged';
+  const counts = q?.counts || {};
+
+  return `
+  <div class="screen desk-shell">
+    ${deskTop('المحادثات', { side: rows ? `${rows.length} محادثة` : '' })}
+    ${deskNav('admin-chats')}
+    <div class="desk-body">
+
+      <div class="chips" style="margin-bottom:14px">
+        ${CHAT_FILTERS.map(([id, label]) => `
+          <button class="chip" data-chat-filter="${id}" aria-pressed="${id === filter}">
+            ${label}${counts[id] ? ` (${counts[id]})` : ''}
+          </button>`).join('')}
+      </div>
+
+      <div class="monitor">
+        <div class="pane">
+          ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+            : rows.length === 0 ? `
+              <div class="panel">
+                <p style="margin:0;font-size:15px;line-height:1.9">${
+                  filter === 'flagged'
+                    ? 'لم يحاول أحد تجاوز المرشّح. هذه هي الحالة التي تريدها.'
+                    : 'لا محادثات في هذا التصنيف.'}</p>
+              </div>`
+            : `<div class="convo-list">${rows.map((r) => {
+                const total = Number(r.redactions || 0);
+                const a = Number(r.a_redactions || 0);
+                const b = Number(r.b_redactions || 0);
+                // One-sided pushing is the case worth naming: it reads
+                // differently from two people impatient with the rules.
+                const oneSided = total >= 2 && (a === 0 || b === 0);
+                return `
+                <button class="convo" data-chat="${escapeAttr(r.match_id)}"
+                        aria-current="${r.match_id === state.openChat}">
+                  <span class="pair">
+                    ${escapeAttr(r.a_name || 'بلا اسم')}
+                    <span class="vs">و</span>
+                    ${escapeAttr(r.b_name || 'بلا اسم')}
+                  </span>
+                  <span class="meta">
+                    <span>${r.messages || 0} رسالة</span>
+                    ${total ? `
+                      <span class="attempts">
+                        <span class="state ${attemptState(total)}">
+                          <span class="dot"></span>${total} محاولة
+                        </span>
+                        ${oneSided ? '<span style="color:var(--caution)">من طرف واحد</span>' : ''}
+                      </span>` : ''}
+                    ${Number(r.reports) ? `<span class="state crit">
+                      <span class="dot"></span>${r.reports} بلاغ</span>` : ''}
+                    <span>${r.last_at
+                      ? new Date(r.last_at).toLocaleDateString('ar')
+                      : 'لم تبدأ'}</span>
+                  </span>
+                </button>`;
+              }).join('')}</div>`}
+        </div>
+
+        <div>${threadPane()}</div>
+      </div>
+    </div>
   </div>`;
+};
+
+function threadPane() {
+  const t = state.chat;
+
+  if (!state.openChat) {
+    return `
+      <div class="panel">
+        <p class="eyebrow">قراءة محادثة</p>
+        <p style="margin:0;font-size:14.5px;line-height:1.9;color:var(--ink-soft)">
+          اختر محادثة من القائمة. فتح أي محادثة يُسجّل باسمك وباسم الطرفين
+          في سجلّ الوصول — وهذا ما يجعل المراقبة قابلة للمساءلة بدل أن تكون
+          تلصّصاً.
+        </p>
+      </div>`;
+  }
+  if (!t || t.match_id !== state.openChat) {
+    return `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`;
+  }
+
+  const [a, b] = t.parties || [];
+  const messages = t.messages || [];
+
+  return `
+    <div class="panel" style="margin-bottom:12px">
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${(t.parties || []).map((party) => `
+          <div style="flex:1;min-width:150px">
+            <div style="font-size:16px;font-weight:700">
+              ${escapeAttr(party.name || 'بلا اسم')}${party.age ? `، ${party.age}` : ''}
+            </div>
+            <div class="tiny muted" style="margin-top:3px">
+              ${escapeAttr(party.city || '—')} · ${TIER_NAMES[party.membership] || ''}
+            </div>
+            <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+              ${Number(party.redactions) ? `
+                <span class="state ${attemptState(Number(party.redactions))}">
+                  <span class="dot"></span>${party.redactions} محاولة
+                </span>` : '<span class="state good"><span class="dot"></span>لا محاولات</span>'}
+              ${Number(party.reports_against) ? `
+                <span class="state crit"><span class="dot"></span>${
+                  party.reports_against} بلاغ</span>` : ''}
+            </div>
+            <button class="btn quiet" style="margin-top:6px;text-align:start"
+                    data-member="${escapeAttr(party.user_id)}">فتح الملف</button>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="panel tinted" style="margin-bottom:12px">
+      <p style="margin:0;font-size:13.5px;line-height:1.85">
+        قراءتك لهذه المحادثة سُجّلت باسمك وباسم الطرفين. ما حجبه المرشّح غير
+        موجود هنا ولا في قاعدة البيانات — تُعرض المحاولة، لا الرقم.
+      </p>
+    </div>
+
+    ${messages.length === 0
+      ? `<div class="panel"><p class="muted" style="margin:0">لا رسائل بعد.</p></div>`
+      : `<div class="panel">
+          <div class="thread">
+            ${messages.map((m) => {
+              const cats = (m.categories || []).map((c) => word('redacted', c)).join('، ');
+              return `
+              <div class="msg ${m.side}${m.redacted ? ' stripped' : ''}">
+                ${escapeAttr(m.body)}
+                ${m.redacted ? `<span class="caught">حُجب: ${
+                  cats || 'تفاصيل اتصال'}</span>` : ''}
+                <span class="stamp">${
+                  escapeAttr((m.side === 'a' ? a : b)?.name || '')} · ${
+                  new Date(m.created_at).toLocaleString('ar', {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`}
+
+    ${t.release ? `
+      <p class="eyebrow" style="margin-top:16px">تبادل الأرقام</p>
+      <div class="panel tight">
+        ${fact('الحالة', word('release', t.release.state) || t.release.state)}
+        ${fact('المبلغان', `${t.release.a_amount ?? '—'} / ${t.release.b_amount ?? '—'}`)}
+      </div>` : ''}
+  `;
+}
+
+// ── the dashboard ─────────────────────────────────────────────────────
+
+const STATUS_WORDS = {
+  applying: 'يكتب طلبه', pending_review: 'ينتظر المراجعة', admitted: 'مقبول',
+  rejected: 'مرفوض', shadow_limited: 'ظهور محدود', banned: 'محظور',
+};
+
+screens.desk = () => {
+  const o = state.overview;
+
+  if (!o) {
+    return `
+    <div class="screen desk-shell">
+      ${deskTop('اللوحة')}
+      ${deskNav('desk')}
+      <div class="desk-body">
+        <div class="tiles">${[0, 0, 0, 0].map(() => `
+          <div class="tile"><div class="label">…</div><div class="figure">—</div></div>`).join('')}</div>
+      </div>
+    </div>`;
+  }
+
+  const series   = o.series || [];
+  const days     = (key) => series.map((d) => Number(d[key] || 0));
+  const sum      = (key) => days(key).reduce((a, b) => a + b, 0);
+  const q        = o.queue || {};
+  const totals   = o.totals || {};
+  const waiting  = Number(o.longest_wait_hours || 0);
+
+  // The oldest applicant, not the mean wait. An average of twenty
+  // applications from this morning and one from March reads as four
+  // hours, and the person from March is who the number is about.
+  const waitState = waiting >= 72 ? 'crit' : waiting >= 24 ? 'warn' : 'good';
+  const waitWord  = waiting >= 72 ? 'متأخّر' : waiting >= 24 ? 'ينتظر' : 'منتظم';
+
+  const funnel = o.funnel || {};
+  const memberships = o.memberships || {};
+
+  return `
+  <div class="screen desk-shell">
+    ${deskTop('اللوحة')}
+    ${deskNav('desk')}
+    <div class="desk-body">
+
+      <div style="margin:2px 0 20px">
+        <h3 class="hd" style="margin:0">
+          <span class="grad-text">${greeting()}</span>
+        </h3>
+        <p class="tiny muted" style="margin:4px 0 0">
+          ${Number(q.applications || 0) + Number(q.photos || 0) + Number(q.reports || 0)
+            + Number(q.requests || 0) + Number(q.meetings || 0) + Number(q.releases || 0) === 0
+            ? 'لا شيء ينتظر قراراً الآن.'
+            : `${Number(q.applications || 0) + Number(q.photos || 0) + Number(q.reports || 0)
+                 + Number(q.requests || 0) + Number(q.meetings || 0)
+                 + Number(q.releases || 0)} أمراً ينتظر قراراً.`}
+          ${Number(q.flagged_chats || 0)
+            ? ` و${q.flagged_chats} محادثة أوقف المرشّح تفاصيل فيها.`
+            : ''}
+        </p>
+      </div>
+
+      <p class="eyebrow">آخر ١٤ يوماً</p>
+      <div class="tiles">
+        ${tile('تسجيلات جديدة', sum('signups'),
+               { foot: 'خلال أسبوعين', spark: sparkline(days('signups'), 'var(--viz-1)') })}
+        ${tile('توافقات', sum('matches'),
+               { foot: `${totals.matches || 0} نشطة الآن`, spark: sparkline(days('matches'), 'var(--viz-2)') })}
+        ${tile('رسائل', sum('messages'),
+               { foot: `${totals.messages || 0} منذ البداية`, spark: sparkline(days('messages'), 'var(--viz-3)') })}
+        ${tile('أطول انتظار', `${waiting}<span style="font-size:15px;font-weight:600"> س</span>`,
+               { foot: `<span class="state ${waitState}"><span class="dot"></span>${waitWord}</span>` })}
+      </div>
+
+      <p class="eyebrow" style="margin-top:22px">ينتظر قراراً</p>
+      <div class="worklist">
+        ${[
+          ['admin',          'طلبات عضوية', q.applications, ''],
+          ['admin-chats',    'محادثات مُعلَّمة', q.flagged_chats, 'المرشّح أوقف تفاصيل فيها'],
+          ['admin-photos',   'صور تنتظر الاعتماد', q.photos, ''],
+          ['admin-reports',  'بلاغات مفتوحة', q.reports, ''],
+          ['admin-requests', 'طلبات رؤية الصور', q.requests, ''],
+          ['admin-meetings', 'لقاءات تنتظر موعداً', q.meetings, ''],
+          ['admin-releases', 'تبادل أرقام', q.releases, ''],
+        ].map(([route, label, n, note]) => work(route, label, Number(n || 0), note)).join('')}
+      </div>
+
+      <div style="display:grid;gap:16px;margin-top:22px"
+           class="desk-split">
+        <div>
+          <p class="eyebrow">مسار القبول</p>
+          <div class="panel">
+            ${barRows(Object.keys(STATUS_WORDS)
+              .filter((k) => Number(funnel[k] || 0) > 0 || k === 'admitted')
+              .map((k) => [STATUS_WORDS[k], Number(funnel[k] || 0)]))}
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">العضويات</p>
+          <div class="panel">
+            ${barRows(['basic', 'premium', 'golden']
+              .map((k) => [TIER_NAMES[k], Number(memberships[k] || 0)]), { step: true })}
+            <p class="tiny muted" style="margin:12px 0 0">
+              مستوى واحد متدرّج، لا ثلاثة ألوان: الأساسية والمميّزة والذهبية
+              مرتّبة، وليست أصنافاً مستقلّة.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      ${(o.cities || []).length ? `
+        <p class="eyebrow" style="margin-top:22px">المدن</p>
+        <div class="panel">
+          ${barRows(o.cities.map((c) => [escapeAttr(c.city), Number(c.n)]))}
+        </div>` : ''}
+
+      <p class="eyebrow" style="margin-top:22px">الإجمالي</p>
+      <div class="panel tight">
+        ${fact('الأعضاء', totals.members)}
+        ${fact('توافقات نشطة', totals.matches)}
+        ${fact('أرقام تبادلت', totals.releases)}
+        ${fact('المراجعون', totals.reviewers)}
+        ${Object.entries(o.outcomes || {}).map(([k, n]) =>
+          fact(word('outcome_kind', k) || k, n)).join('')}
+      </div>
+    </div>
+  </div>`;
+};
+
+/**
+ * The application queue as a card stack.
+ *
+ * Borrowed from the swipe deck members use, and it earns its place here
+ * for a reason that has nothing to do with fashion: a reviewer working
+ * through forty applications makes a better decision looking at one
+ * person at a time than scrolling a list where the forty blur together.
+ * One card, one decision, then it is gone.
+ *
+ * Three guards on the borrowing:
+ *   * A reviewer's own application is never in the deck — it renders as
+ *     a card that cannot be decided, same rule as the list.
+ *   * Reject asks twice. A swipe is a cheap gesture and rejection is not
+ *     a cheap outcome.
+ *   * "Open the file" is always one tap away, because a card is a summary
+ *     and some decisions need the whole application.
+ */
+
+/**
+ * Decide the top card, then let it leave before the repaint.
+ *
+ * The card flies out first and the request goes in parallel: a reviewer
+ * working through a queue should not watch a spinner between every
+ * decision. If the request fails the card comes back, which is the one
+ * case where the optimism has to be undone rather than apologised for.
+ */
+async function decideFromDeck(id, action) {
+  const card = document.querySelector(`#deck .card[data-card="${id}"]`);
+  card?.classList.add(action === 'admit' ? 'gone-yes' : 'gone-no');
+
+  if (!state.db) {
+    toast('لا اتصال بقاعدة البيانات.');
+    return;
+  }
+
+  try {
+    await state.db.adminDecide(id, action);
+    state.members = null;
+    state.member = null;
+    invalidate('stats', 'member');
+    // Drop it from the queue in place rather than refetching: the next
+    // card has to be on screen now, and the counts are refreshed by the
+    // stats read the shell does anyway.
+    if (state.queue?.rows) {
+      state.queue.rows = state.queue.rows.filter((r) => r.id !== id);
+    }
+    toast(action === 'admit' ? 'قُبل الطلب.' : 'رُفض الطلب.');
+    await new Promise((r) => setTimeout(r, 200));
+    if (current() === 'admin') render('admin');
+  } catch (error) {
+    card?.classList.remove('gone-yes', 'gone-no');
+    toast(error.message);
+  }
+}
+
+/**
+ * Drag the top card.
+ *
+ * Pointer events rather than touch events, so a reviewer with a mouse
+ * gets the same gesture as one with a phone. The threshold is a third of
+ * the card's width: far enough that a stray scroll does not decide
+ * somebody's application.
+ */
+function wireDeck() {
+  const deck = document.getElementById('deck');
+  const card = deck?.querySelector('.card');
+  if (!card) return;
+
+  let startX = 0, startY = 0, dx = 0, dragging = false, decided = false;
+  const threshold = () => Math.max(card.offsetWidth / 3, 90);
+
+  card.addEventListener('pointerdown', (event) => {
+    if (event.button) return;
+    dragging = true;
+    startX = event.clientX;
+    startY = event.clientY;
+    card.style.transition = 'none';
+    card.setPointerCapture?.(event.pointerId);
+  });
+
+  card.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    // A mostly-vertical drag is a scroll, not a verdict.
+    if (Math.abs(dy) > Math.abs(dx) * 1.6 && Math.abs(dx) < 24) return;
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 26}deg)`;
+    // RTL: dragging toward the inline start (leftward, negative dx) is
+    // the forward direction, so that is admit — the same direction as
+    // the green button, which sits at the inline end.
+    card.dataset.lean = dx < -40 ? 'yes' : dx > 40 ? 'no' : '';
+  });
+
+  const release = () => {
+    if (!dragging || decided) return;
+    dragging = false;
+    card.style.transition = '';
+    if (Math.abs(dx) > threshold()) {
+      const action = dx < 0 ? 'admit' : 'reject';
+      if (card.dataset.card === state.userId) {
+        toast('لا يبتّ المراجع في طلبه.');
+      } else if (action === 'reject') {
+        // Same two-step as the button: the drag arms it, a tap confirms.
+        toast('اسحب مرة أخرى أو اضغط ✕ لتأكيد الرفض.');
+        const button = document.querySelector('[data-deck="reject"]');
+        if (button) {
+          button.dataset.confirming = 'yes';
+          button.style.background = 'var(--st-crit)';
+          button.style.color = '#fff';
+        }
+      } else {
+        decided = true;
+        card.style.transform = '';
+        card.dataset.lean = '';
+        decideFromDeck(card.dataset.card, 'admit');
+        return;
+      }
+    }
+    card.style.transform = '';
+    card.dataset.lean = '';
+    dx = 0;
+  };
+
+  card.addEventListener('pointerup', release);
+  card.addEventListener('pointercancel', release);
+  card.addEventListener('lostpointercapture', release);
+}
+
+function reviewDeck(rows) {
+  const deck = rows.slice(0, 12);
+  if (!deck.length) return '';
+
+  return `
+    <div class="stack" id="deck">
+      ${deck.map((r, i) => {
+        const mine = r.id === state.userId;
+        return `
+        <article class="card" data-card="${escapeAttr(r.id)}" data-i="${i}">
+          <span class="verdict yes">قبول</span>
+          <span class="verdict no">رفض</span>
+          <div class="shot">
+            ${r.photo
+              ? `<img alt="" data-signed="${escapeAttr(r.photo)}">`
+              : `<div class="none">لم يرفع صوراً</div>`}
+            <div class="over">
+              <div class="nm">${escapeAttr(r.display_name || 'بلا اسم')}${
+                r.age ? `، ${r.age}` : ''}</div>
+              <div class="sub">
+                ${escapeAttr(r.city || '—')}
+                ${r.occupation ? ` · ${escapeAttr(r.occupation)}` : ''}
+                ${r.photo_count ? ` · ${r.photo_count} صور` : ' · بلا صور'}
+              </div>
+            </div>
+          </div>
+          <div class="facts">
+            <div class="ln"><span>الحالة</span><span>${
+              word('marital_status', r.marital_status)}</span></div>
+            <div class="ln"><span>الالتزام</span><span>${
+              word('practice_level', r.practice_level)}</span></div>
+            <div class="ln"><span>الإطار الزمني</span><span>${
+              word('timeline', r.timeline)}</span></div>
+            <div class="ln"><span>العائلة</span><span>${
+              r.family_aware ? 'على علم' : 'ليست على علم'}</span></div>
+            ${Number(r.reports_against) ? `
+              <div class="ln"><span>بلاغات</span><span class="state crit">
+                <span class="dot"></span>${r.reports_against} مفتوح</span></div>` : ''}
+            ${mine ? `
+              <div class="ln"><span>ملاحظة</span><span style="color:var(--caution)">
+                هذا طلبك — لا يبتّ المراجع في طلبه</span></div>` : ''}
+          </div>
+        </article>`;
+      }).join('')}
+    </div>
+
+    <div class="deck-controls">
+      <button class="round no" data-deck="reject" aria-label="رفض">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+      <button class="round" data-deck="open" aria-label="فتح الملف">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+      </button>
+      <button class="round yes big" data-deck="admit" aria-label="قبول">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/></svg>
+      </button>
+    </div>
+
+    <p class="tiny muted" style="text-align:center;margin:12px 0 0">
+      اسحب البطاقة أو استخدم الأزرار. الرفض يسأل مرّتين.
+      ${deck.length < rows.length ? `باقي ${rows.length - deck.length} بعد هؤلاء.` : ''}
+    </p>`;
+}
 
 screens.admin = () => {
   const q = state.queue;
@@ -1725,9 +2339,9 @@ screens.admin = () => {
   if (q?.forbidden) {
     const id = state.userId || '';
     return `
-    <div class="screen">
-      ${appbar('مكتب المراجعة')}
-      <div class="pad">
+    <div class="screen desk-shell">
+      ${deskTop('مكتب المراجعة')}
+      <div class="desk-body">
         <div class="panel">
           <p class="eyebrow">لست مراجعاً</p>
           <p style="margin:0;font-size:15px;line-height:1.9">
@@ -1764,20 +2378,36 @@ screens.admin = () => {
     </div>`;
   }
 
+  const filter = state.queueFilter || 'waiting';
+  const rows = q?.rows || [];
+  // The stack is only honest for the waiting queue: a card you swipe
+  // through implies every card gets a decision, which is true of
+  // applications and not of a list you are browsing.
+  const stackable = filter === 'waiting' && rows.length > 0;
+  const asStack = stackable && state.queueView !== 'list';
+
   return `
-  <div class="screen">
-    ${appbar('مكتب المراجعة', { side: q ? `${(q.rows || []).length}` : '' })}
-    <div class="pad">
-      ${deskNav('admin')}
-      <div class="chips scroll-row" style="margin-bottom:16px">
-        ${QUEUE_TABS.map(([id, label]) => `
-          <button class="chip" data-queue="${id}"
-                  aria-pressed="${(state.queueFilter || 'waiting') === id}">
-            ${label}${q?.counts?.[id] ? ` (${q.counts[id]})` : ''}
-          </button>`).join('')}
+  <div class="screen desk-shell">
+    ${deskTop('مكتب المراجعة', { side: q ? `${rows.length} طلب` : '' })}
+    ${deskNav('admin')}
+    <div class="desk-body">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+        <div class="chips" style="flex:1">
+          ${QUEUE_TABS.map(([id, label]) => `
+            <button class="chip" data-queue="${id}"
+                    aria-pressed="${filter === id}">
+              ${label}${q?.counts?.[id] ? ` (${q.counts[id]})` : ''}
+            </button>`).join('')}
+        </div>
+        ${stackable ? `
+          <button class="chip" data-queue-view="${asStack ? 'list' : 'stack'}">
+            ${asStack ? 'كقائمة' : 'كبطاقات'}
+          </button>` : ''}
       </div>
 
-      ${!q ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+      ${asStack ? reviewDeck(rows) : ''}
+
+      ${asStack ? '' : !q ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
         : (q.rows || []).length === 0
         ? `<div class="panel"><p class="muted" style="margin:0">لا أحد هنا.</p></div>`
         : (q.rows || []).map((r) => `
@@ -2142,10 +2772,10 @@ screens['admin-photos'] = () => {
   const rows = q?.rows;
   const filter = state.photoFilter || 'pending';
   return `
-  <div class="screen">
-    ${appbar('الصور', { side: rows ? String(rows.length) : '' })}
-    <div class="pad">
-      ${deskNav('admin-photos')}
+  <div class="screen desk-shell">
+    ${deskTop('الصور', { side: rows ? `${rows.length} صورة` : '' })}
+    ${deskNav('admin-photos')}
+    <div class="desk-body">
       <div class="chips scroll-row" style="margin-bottom:16px">
         ${PHOTO_FILTERS.map(([id, label]) => `
           <button class="chip" data-photo-filter="${id}" aria-pressed="${filter === id}">
@@ -2211,8 +2841,8 @@ screens.member = () => {
   const waiting = ['applying', 'pending_review'].includes(m.status);
 
   return `
-  <div class="screen">
-    ${appbar(escapeAttr(m.display_name || 'ملف العضو'))}
+  <div class="screen desk-shell">
+    ${deskTop(escapeAttr(m.display_name || 'ملف العضو'))}
     <div class="pad">
       <div class="panel">
         <div style="display:flex;align-items:flex-start;gap:12px">
@@ -2330,10 +2960,10 @@ screens.member = () => {
 screens['admin-reports'] = () => {
   const q = state.reports;
   return `
-  <div class="screen">
-    ${appbar('البلاغات', { side: q ? String((q.rows || []).length) : '' })}
-    <div class="pad">
-      ${deskNav('admin-reports')}
+  <div class="screen desk-shell">
+    ${deskTop('البلاغات', { side: q ? `${(q.rows || []).length} بلاغ` : '' })}
+    ${deskNav('admin-reports')}
+    <div class="desk-body">
       ${!q ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
         : (q.rows || []).length === 0
         ? `<div class="panel"><p class="muted" style="margin:0">لا بلاغات مفتوحة.</p></div>`
@@ -2384,10 +3014,10 @@ screens['admin-reports'] = () => {
 screens['admin-requests'] = () => {
   const rows = state.photoRequests;
   return `
-  <div class="screen">
-    ${appbar('طلبات الصور', { side: rows ? String(rows.length) : '' })}
-    <div class="pad">
-      ${deskNav('admin-requests')}
+  <div class="screen desk-shell">
+    ${deskTop('طلبات الصور', { side: rows ? String(rows.length) : '' })}
+    ${deskNav('admin-requests')}
+    <div class="desk-body">
       ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
         : rows.length === 0
         ? `<div class="panel"><p class="muted" style="margin:0">لا طلبات تنتظر الفرز.</p></div>`
@@ -2431,10 +3061,10 @@ const statTile = (label, value, note = '') => `
 screens['admin-stats'] = () => {
   const s = state.stats;
   return `
-  <div class="screen">
-    ${appbar('الأرقام')}
-    <div class="pad">
-      ${deskNav('admin-stats')}
+  <div class="screen desk-shell">
+    ${deskTop('الأرقام')}
+    ${deskNav('admin-stats')}
+    <div class="desk-body">
       ${!s ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>` : `
         <div class="stat-grid">
           ${statTile('في الانتظار', s.waiting ?? 0,
@@ -2512,10 +3142,10 @@ async function loadMeetings() {
 // ── search ────────────────────────────────────────────────────────────
 
 screens['admin-search'] = () => `
-  <div class="screen">
-    ${appbar('بحث')}
-    <div class="pad">
-      ${deskNav('admin-search')}
+  <div class="screen desk-shell">
+    ${deskTop('بحث')}
+    ${deskNav('admin-search')}
+    <div class="desk-body">
       <label class="field">
         <span>الاسم، المدينة، أو معرّف الحساب</span>
         <input type="search" id="search-q" value="${escapeAttr(state.searchQ || '')}"
@@ -2581,10 +3211,10 @@ screens['admin-meetings'] = () => {
   const q = state.adminMeetings;
   const rows = q?.rows;
   return `
-  <div class="screen">
-    ${appbar('اللقاءات', { side: rows ? String(rows.length) : '' })}
-    <div class="pad">
-      ${deskNav('admin-meetings')}
+  <div class="screen desk-shell">
+    ${deskTop('اللقاءات', { side: rows ? String(rows.length) : '' })}
+    ${deskNav('admin-meetings')}
+    <div class="desk-body">
       ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
         : rows.length === 0
         ? `<div class="panel">
@@ -2658,10 +3288,10 @@ screens['admin-releases'] = () => {
   const filter = state.releaseFilter || 'pending';
 
   return `
-  <div class="screen">
-    ${appbar('تبادل الأرقام', { side: rows ? String(rows.length) : '' })}
-    <div class="pad">
-      ${deskNav('admin-releases')}
+  <div class="screen desk-shell">
+    ${deskTop('تبادل الأرقام', { side: rows ? String(rows.length) : '' })}
+    ${deskNav('admin-releases')}
+    <div class="desk-body">
       <div class="chips scroll-row" style="margin-bottom:16px">
         ${RELEASE_FILTERS.map(([id, label]) => `
           <button class="chip" data-release-filter="${id}" aria-pressed="${filter === id}">
@@ -2755,10 +3385,10 @@ async function loadReleases() {
 screens['admin-audit'] = () => {
   const rows = state.audit;
   return `
-  <div class="screen">
-    ${appbar('السجلّ')}
-    <div class="pad">
-      ${deskNav('admin-audit')}
+  <div class="screen desk-shell">
+    ${deskTop('السجلّ')}
+    ${deskNav('admin-audit')}
+    <div class="desk-body">
 
       <p class="eyebrow">المراجعون</p>
       <div class="panel tight">
@@ -2923,6 +3553,19 @@ async function loadStats() {
   try { state.stats = await state.db.adminStats(); }
   catch { state.stats = null; }   // the nav just shows no counts
 }
+async function loadOverview() {
+  try { state.overview = await state.db.adminOverview(); }
+  catch (error) { state.overview = null; toast(error.message); }
+}
+async function loadChats(filter = state.chatFilter || 'flagged') {
+  state.chatFilter = filter;
+  try { state.chats = await state.db.adminConversations(filter); }
+  catch (error) { state.chats = { rows: [], counts: {} }; toast(error.message); }
+}
+async function loadChatThread() {
+  try { state.chat = await state.db.adminConversation(state.openChat); }
+  catch (error) { state.chat = null; toast(error.message); }
+}
 async function loadMember() {
   try { state.member = await state.db.adminMember(state.memberId); }
   catch (error) { state.member = null; toast(error.message); }
@@ -3069,6 +3712,11 @@ function render(name) {
     console.warn(`[nasib] no screen for "${state.missingRoute}" — is this build older than the link?`);
   }
 
+  // The desk is a different surface, not a skin: the token swap happens
+  // on the document so `body` picks up the dark ground too. A reviewer
+  // should never have to wonder which side of the glass they are on.
+  document.documentElement.dataset.surface = DESK_ROUTES.has(name) ? 'desk' : 'app';
+
   app.innerHTML = build();
   app.firstElementChild?.classList.add('on');
   window.scrollTo(0, 0);
@@ -3077,9 +3725,12 @@ function render(name) {
   // reviewer who lands on it directly must not be left on a screen with no
   // way out. It keeps the bar, with `ملفي` marked current, because that is
   // where the desk is reached from.
+  // The desk has its own navigation — the rail and the back button — and
+  // the member tab bar sat on top of its content at console width. A
+  // reviewer leaves the desk by the back button or the last rail entry.
   const inApp = IN_APP.has(name) || name === 'admin';
   if (inApp) state.admitted = true;
-  tabbar.classList.toggle('on', state.admitted && inApp);
+  tabbar.classList.toggle('on', state.admitted && inApp && !DESK_ROUTES.has(name));
   tabbar.style.setProperty('--tabs', String(TABS.length));
   tabbar.innerHTML = TABS.map(([id, label, icon]) => `
     <button data-tab="${id}" aria-current="${
@@ -3098,6 +3749,11 @@ function render(name) {
   // reads as a broken tap on a slow connection.
   if (name === 'profile') fetchOnce('profile', loadProfile);
   if (name === 'admin') fetchOnce('admin', loadQueue);
+  if (name === 'desk') fetchOnce('desk', loadOverview);
+  if (name === 'admin-chats') {
+    fetchOnce('chats', loadChats, 'admin-chats');
+    if (state.openChat) fetchOnce(`thread:${state.openChat}`, loadChatThread, 'admin-chats');
+  }
   if (name === 'today') fetchOnce('today', state.db ? loadSlate : loadMembers);
   if (name === 'admin-photos') fetchOnce('admin-photos', loadPhotoQueue);
   if (name === 'admin-requests') fetchOnce('admin-requests', loadPhotoRequests);
@@ -3106,6 +3762,7 @@ function render(name) {
   if (name === 'admin-meetings') fetchOnce('admin-meetings', loadAdminMeetings);
   if (name === 'admin-audit') fetchOnce('admin-audit', loadAudit);
   if (name === 'admin-search') wireSearch();
+  if (name === 'admin') wireDeck();
   if (name === 'search') { fetchOnce('search', loadSearchGate); wireSearchScreen(); }
   if (name === 'membership') fetchOnce('membership', loadMembership);
   if (name === 'admirers') fetchOnce('admirers', loadAdmirers);
@@ -3701,7 +4358,7 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-search-value], [data-member], [data-membership], [data-photo-action], [data-photo-filter], [data-schedule], [data-unban], [data-release-filter], [data-release], [data-paid], [data-refunded], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting], [data-swipe], [data-close-overlay], [data-bingo], [data-cancel-release], [data-session-ack], [data-session-secure], img[data-zoom]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-search-value], [data-member], [data-membership], [data-chat], [data-chat-filter], [data-deck], [data-queue-view], [data-photo-action], [data-photo-filter], [data-schedule], [data-unban], [data-release-filter], [data-release], [data-paid], [data-refunded], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting], [data-swipe], [data-close-overlay], [data-bingo], [data-cancel-release], [data-session-ack], [data-session-secure], img[data-zoom]');
   if (!el) return;
 
   if (el.dataset.searchValue !== undefined) {
@@ -4045,6 +4702,62 @@ document.addEventListener('click', async (event) => {
     return render('admin');                // the skeleton; the router loads
   }
 
+  if (el.dataset.chatFilter) {
+    state.chat = null;
+    state.openChat = null;
+    invalidate('chats');
+    await loadChats(el.dataset.chatFilter);
+    return render('admin-chats');
+  }
+
+  if (el.dataset.chat) {
+    // Opening a thread is the logged act, so it is a deliberate tap and
+    // never a side effect of rendering the list.
+    state.openChat = el.dataset.chat;
+    state.chat = null;
+    render('admin-chats');
+    invalidate(`thread:${state.openChat}`);
+    await loadChatThread();
+    if (current() === 'admin-chats') render('admin-chats');
+    return;
+  }
+
+  if (el.dataset.queueView) {
+    state.queueView = el.dataset.queueView;
+    return render('admin');
+  }
+
+  // ── the review deck ──────────────────────────────────────────────
+  if (el.dataset.deck) {
+    const card = document.querySelector('#deck .card');
+    if (!card) return;
+    const id = card.dataset.card;
+
+    if (el.dataset.deck === 'open') {
+      state.memberId = id;
+      state.member = null;
+      invalidate('member');
+      return go('member');
+    }
+
+    if (id === state.userId) {
+      return toast('لا يبتّ المراجع في طلبه.');
+    }
+
+    // Rejection asks twice. A swipe is a cheap gesture; being turned
+    // away from a marriage platform is not a cheap outcome, and the
+    // gesture should not be the only thing between the two.
+    if (el.dataset.deck === 'reject' && el.dataset.confirming !== 'yes') {
+      el.dataset.confirming = 'yes';
+      el.setAttribute('aria-label', 'تأكيد الرفض');
+      el.style.background = 'var(--st-crit)';
+      el.style.color = '#fff';
+      return;
+    }
+
+    return decideFromDeck(id, el.dataset.deck === 'admit' ? 'admit' : 'reject');
+  }
+
   if (el.dataset.decideUser) {
     const action = el.dataset.decideUser;
     el.disabled = true;
@@ -4254,14 +4967,14 @@ render(location.hash.slice(2) || 'welcome');
       // a reviewer on the desk, an admitted member inside the app, and
       // anyone still waiting on their status.
       if (current() === 'welcome') {
-        go(state.isAdmin ? 'admin'
+        go(state.isAdmin ? 'desk'
            : state.application?.status === 'admitted' ? 'today'
            : 'review', { replace: true });
         return;
       }
     } else if (state.isAdmin && current() === 'welcome') {
       // An admin who has not applied — the usual case for the owner.
-      go('admin', { replace: true });
+      go('desk', { replace: true });
       return;
     }
   } catch (error) {
