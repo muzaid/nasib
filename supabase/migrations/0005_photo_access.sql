@@ -31,21 +31,23 @@ comment on column photos.blurred_path is
   'Heavily blurred derivative generated server-side on upload. This is what
    everyone sees until a grant exists. Blurring on the client is not blurring.';
 
-create type photo_request_state as enum (
-  'pending_admin',       -- waiting to be screened
-  'blocked_by_admin',    -- never shown to the owner; she is not troubled by it
-  'pending_owner',       -- relayed, waiting on her
-  'approved',
-  'rejected_by_owner',
-  'withdrawn',           -- requester changed their mind
-  'expired'              -- owner did not respond in time
-);
+do $ddl$ begin
+  create type photo_request_state as enum (
+    'pending_admin',       -- waiting to be screened
+    'blocked_by_admin',    -- never shown to the owner; she is not troubled by it
+    'pending_owner',       -- relayed, waiting on her
+    'approved',
+    'rejected_by_owner',
+    'withdrawn',           -- requester changed their mind
+    'expired'              -- owner did not respond in time
+  );
+exception when duplicate_object then null; end $ddl$;
 
 -- ---------------------------------------------------------------------
 -- Requests
 -- ---------------------------------------------------------------------
 
-create table photo_access_requests (
+create table if not exists photo_access_requests (
   id                uuid primary key default gen_random_uuid(),
   requester_id      uuid not null references users(id) on delete cascade,
   owner_id          uuid not null references users(id) on delete cascade,
@@ -68,15 +70,15 @@ create table photo_access_requests (
 
 -- One live request per pair. Without this a rejected requester simply asks
 -- again tomorrow, and the feature becomes a way to pester someone.
-create unique index photo_request_one_live
+create unique index if not exists photo_request_one_live
   on photo_access_requests (requester_id, owner_id)
   where state in ('pending_admin', 'pending_owner', 'approved');
 
-create index photo_request_admin_queue
+create index if not exists photo_request_admin_queue
   on photo_access_requests (created_at)
   where state = 'pending_admin';
 
-create index photo_request_owner_inbox
+create index if not exists photo_request_owner_inbox
   on photo_access_requests (owner_id, created_at)
   where state = 'pending_owner';
 
@@ -84,7 +86,7 @@ create index photo_request_owner_inbox
 -- Grants
 -- ---------------------------------------------------------------------
 
-create table photo_access_grants (
+create table if not exists photo_access_grants (
   id              uuid primary key default gen_random_uuid(),
   request_id      uuid not null unique references photo_access_requests(id) on delete cascade,
   viewer_id       uuid not null references users(id) on delete cascade,
@@ -104,7 +106,7 @@ create table photo_access_grants (
   view_count      int not null default 0
 );
 
-create index photo_grant_lookup on photo_access_grants (viewer_id, owner_id)
+create index if not exists photo_grant_lookup on photo_access_grants (viewer_id, owner_id)
   where revoked_at is null;
 
 -- The single source of truth for "may this person see those photos".
@@ -347,14 +349,14 @@ $$;
 -- Screenshot attempts are reported by the client and shown to the owner.
 -- Imperfect on both platforms, but the deterrent and the signal both
 -- matter more here than the detection rate.
-create table photo_view_events (
+create table if not exists photo_view_events (
   id         bigserial primary key,
   grant_id   uuid not null references photo_access_grants(id) on delete cascade,
   kind       text not null check (kind in ('viewed', 'screenshot_attempt', 'screen_recording')),
   created_at timestamptz not null default now()
 );
 
-create index photo_view_events_grant on photo_view_events (grant_id, created_at desc);
+create index if not exists photo_view_events_grant on photo_view_events (grant_id, created_at desc);
 
 -- ---------------------------------------------------------------------
 -- Housekeeping
@@ -394,23 +396,29 @@ alter table photo_view_events     enable row level security;
 -- The requester sees their own request, but a blocked one reads as
 -- "awaiting a response" to them: telling a rejected requester that an
 -- admin stopped him invites him to work out why.
+drop policy if exists photo_req_requester on photo_access_requests;
 create policy photo_req_requester on photo_access_requests for select
   using (requester_id = auth.uid());
 
 -- The owner sees a request only once it has been screened and relayed.
+drop policy if exists photo_req_owner on photo_access_requests;
 create policy photo_req_owner on photo_access_requests for select
   using (owner_id = auth.uid()
          and state in ('pending_owner', 'approved', 'rejected_by_owner', 'expired'));
 
+drop policy if exists photo_req_admin on photo_access_requests;
 create policy photo_req_admin on photo_access_requests for select using (is_admin());
 
+drop policy if exists photo_grant_parties on photo_access_grants;
 create policy photo_grant_parties on photo_access_grants for select
   using (viewer_id = auth.uid() or owner_id = auth.uid() or is_admin());
 
+drop policy if exists photo_view_events_owner on photo_view_events;
 create policy photo_view_events_owner on photo_view_events for select
   using (exists (select 1 from photo_access_grants g
                  where g.id = grant_id and (g.owner_id = auth.uid() or is_admin())));
 
+drop policy if exists photo_view_events_insert on photo_view_events;
 create policy photo_view_events_insert on photo_view_events for insert
   with check (exists (select 1 from photo_access_grants g
                       where g.id = grant_id and g.viewer_id = auth.uid()));

@@ -21,6 +21,18 @@ language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
 
+-- The claims, as PostgREST sets them. `session_id` is what identifies one
+-- sign-in: Supabase puts it in every token it issues, and the one-session
+-- rule is built on it.
+create or replace function auth.jwt() returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'sub',        nullif(current_setting('request.jwt.claim.sub', true), ''),
+    'role',       nullif(current_setting('request.jwt.claim.role', true), ''),
+    'session_id', nullif(current_setting('request.jwt.claim.session_id', true), '')
+  )
+$$;
+
 create or replace function auth.role() returns text
 language sql stable as $$
   select coalesce(current_setting('request.jwt.claim.role', true), 'authenticated')

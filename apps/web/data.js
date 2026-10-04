@@ -204,6 +204,43 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     /** Who this browser is, and whether it is a reviewer. */
     whoami: () => rpc("whoami", {}),
 
+    // ── account security ──────────────────────────────────────────────
+    /**
+     * Claim this sign-in, end the others, and report anyone else's.
+     *
+     * The user agent is sent so the owner can tell one sign-in from
+     * another. The IP is not: it would read better ("from Ramallah") and
+     * it is a location history of a person on a marriage app, kept
+     * indefinitely, for a feature that works without it.
+     */
+    registerSession: () =>
+      rpc("register_session", { agent: navigator.userAgent.slice(0, 300) }),
+    acknowledgeSessions: () => rpc("acknowledge_sessions", {}),
+    signOutOthers:       () => rpc("sign_out_other_sessions", {}),
+    mySessions:          () => rpc("my_sessions", {}),
+
+    adminBanEmail:   (email, reason, notes = null) =>
+      rpc("admin_ban_email", { target_email: email, reason, notes }),
+    adminUnbanEmail: (email) => rpc("admin_unban_email", { target_email: email }),
+    adminBannedEmails: () => rpc("admin_banned_emails", {}),
+
+    /** Change the password — after ending the other sessions, not before. */
+    async changePassword(password) {
+      const s = await signIn();
+      const res = await http(`${base}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          apikey: key,
+          authorization: `Bearer ${s.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ password: String(password || "") }),
+      });
+      const payload = await readBody(res);
+      if (!res.ok) throw new DataError(authMessage(res.status, payload, res));
+      return payload;
+    },
+
     /**
      * Sign in as a reviewer, with an email and a password.
      *
@@ -357,6 +394,31 @@ export function createClient({ url, key, fetch: doFetch, storage } = {}) {
     adminScreenRequest: (id, allow, reason = null) =>
       rpc("admin_screen_photo_request", { request_id: id, allow, reason }),
     adminStats:        () => rpc("admin_stats", {}),
+
+    // ── Memberships, the slate, search ────────────────────────────────
+    myBenefits:     () => rpc("my_benefits", {}),
+    allMemberships: () => rpc("all_memberships", {}),
+    mySlate:        () => rpc("my_slate", {}),
+    swipe:          (candidateId, interested, note = null) =>
+      rpc("swipe", { candidate: candidateId, interested, note }),
+    myAdmirers:     () => rpc("my_admirers", {}),
+    searchMembers:  (filters = {}) => rpc("search_members", { filters }),
+
+    // ── The contact release ───────────────────────────────────────────
+    pressBingo:   (matchId) => rpc("press_bingo", { p_match_id: matchId }),
+    myRelease:    (matchId) => rpc("my_release", { p_match_id: matchId }),
+    cancelRelease:(matchId) => rpc("cancel_release", { p_match_id: matchId }),
+    setMyPhone:   (phone) => rpc("set_my_phone", { phone }),
+
+    adminReleases:      (filter = "pending") => rpc("admin_releases", { filter }),
+    adminDecideRelease: (id, approve, days = 3, reason = null) =>
+      rpc("admin_decide_release", { release_id: id, approve, days, reason }),
+    adminMarkPaid:      (id, userId, reference = null) =>
+      rpc("admin_mark_paid", { release_id: id, which_user: userId, reference }),
+    adminMarkRefunded:  (id, reference = null) =>
+      rpc("admin_mark_refunded", { release_id: id, reference }),
+    adminSetMembership: (userId, level, months = 1, notes = null) =>
+      rpc("admin_set_membership", { target: userId, level, months, notes }),
 
     // ── The member's own screens ──────────────────────────────────────
     myPhotoRequests: () => rpc("my_photo_requests", {}),

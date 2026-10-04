@@ -14,17 +14,19 @@
 -- came with her brother" are facts on the record rather than claims.
 -- =====================================================================
 
-create type meeting_state as enum (
-  'proposed',            -- one side asked
-  'declined',            -- the other said no
-  'pending_scheduling',  -- both agreed, waiting on a slot
-  'scheduled',
-  'completed',
-  'cancelled',
-  'no_show'
-);
+do $ddl$ begin
+  create type meeting_state as enum (
+    'proposed',            -- one side asked
+    'declined',            -- the other said no
+    'pending_scheduling',  -- both agreed, waiting on a slot
+    'scheduled',
+    'completed',
+    'cancelled',
+    'no_show'
+  );
+exception when duplicate_object then null; end $ddl$;
 
-create table offices (
+create table if not exists offices (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
   city        text not null,
@@ -40,7 +42,7 @@ create table offices (
 -- A slot is a real room at a real time with a named staff member on it.
 -- Capacity is almost always 1: two people and their families need the room
 -- to themselves.
-create table office_slots (
+create table if not exists office_slots (
   id            uuid primary key default gen_random_uuid(),
   office_id     uuid not null references offices(id) on delete cascade,
   starts_at     timestamptz not null,
@@ -54,11 +56,11 @@ create table office_slots (
   constraint slot_not_oversold check (booked_count <= capacity)
 );
 
-create index office_slots_open
+create index if not exists office_slots_open
   on office_slots (office_id, starts_at)
   where active and booked_count < capacity;
 
-create table meetings (
+create table if not exists meetings (
   id              uuid primary key default gen_random_uuid(),
   match_id        uuid not null references matches(id) on delete cascade,
   proposed_by     uuid not null references users(id) on delete cascade,
@@ -87,14 +89,14 @@ create table meetings (
 
 -- One live meeting per match. Two people do not need three pending
 -- appointments with each other.
-create unique index meeting_one_live_per_match
+create unique index if not exists meeting_one_live_per_match
   on meetings (match_id)
   where state in ('proposed', 'pending_scheduling', 'scheduled');
 
-create index meetings_scheduling_queue on meetings (proposed_at)
+create index if not exists meetings_scheduling_queue on meetings (proposed_at)
   where state = 'pending_scheduling';
 
-create table meeting_attendance (
+create table if not exists meeting_attendance (
   meeting_id    uuid not null references meetings(id) on delete cascade,
   user_id       uuid not null references users(id) on delete cascade,
   attended      boolean,
@@ -309,13 +311,16 @@ alter table office_slots       enable row level security;
 alter table meetings           enable row level security;
 alter table meeting_attendance enable row level security;
 
+drop policy if exists offices_public on offices;
 create policy offices_public on offices for select using (active or is_admin());
 
 -- Slot rows are not browsable: `booked_count` on a named room at a named
 -- hour tells you who is meeting whom if you watch it. `open_slots()`
 -- returns only what a user needs.
+drop policy if exists office_slots_admin on office_slots;
 create policy office_slots_admin on office_slots for select using (is_admin());
 
+drop policy if exists meetings_parties on meetings;
 create policy meetings_parties on meetings for select
   using (
     exists (select 1 from matches m
@@ -325,6 +330,7 @@ create policy meetings_parties on meetings for select
 
 -- A chaperoning or gating wali sees the appointment, since the whole
 -- point is that the family is part of it.
+drop policy if exists meetings_wali on meetings;
 create policy meetings_wali on meetings for select
   using (exists (
     select 1 from matches m
@@ -335,6 +341,7 @@ create policy meetings_wali on meetings for select
       and g.level in ('chaperoned', 'gated')
   ));
 
+drop policy if exists attendance_self on meeting_attendance;
 create policy attendance_self on meeting_attendance for select
   using (user_id = auth.uid() or is_admin());
 

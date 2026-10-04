@@ -226,15 +226,20 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
       people[target].status = action === 'admit' ? 'admitted' : 'rejected';
       return json({ user_id: target, status: people[target].status });
     }
-    if (url.includes('/rpc/browse_members')) {
-      const rows = Object.entries(people)
+    if (url.includes('/rpc/my_slate')) {
+      const cards = Object.entries(people)
         .filter(([, p]) => p.status === 'admitted')
-        .map(([id, p]) => ({ id, display_name: p.display_name, city: p.city, age: p.age,
-                             bio: 'نبذة قصيرة.', timeline: 'within_1_year',
-                             marital_status: 'never_married', practice_level: 'practicing',
-                             willing_to_relocate: false, family_aware: true,
-                             photo_count: 2, photos_unlocked: false }));
-      return json({ gated: false, status: 'admitted', rows });
+        .map(([id, p], i) => ({ id, rank: i, decision: 'pending',
+                                display_name: p.display_name, city: p.city, age: p.age,
+                                bio: 'نبذة قصيرة.', timeline: 'within_1_year',
+                                marital_status: 'never_married', practice_level: 'practicing',
+                                willing_to_relocate: false, family_aware: true,
+                                photo_count: 2, photos_unlocked: false }));
+      return json({ gated: false, membership: 'basic', size: 5, cards });
+    }
+    if (url.includes('/rpc/my_benefits')) {
+      return json({ membership: 'basic', daily_candidates: 5, can_see_interest: false,
+                    can_search: false, release_discount: 0 });
     }
     if (url.includes('/storage/v1/object/sign/')) {
       return json({ signedURL: '/object/signed/photos/x?token=abc' });
@@ -293,7 +298,7 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   await page.locator('[data-tab="today"]').click();
   await page.waitForTimeout(500);
   const todayText = await page.locator('#app').innerText();
-  check(todayText.includes('ليلى'), 'the directory shows the admitted member, not the fixture');
+  check(todayText.includes('ليلى'), 'the deck shows the admitted member, not the fixture');
   check(!todayText.includes('يوسف'), 'and the fixture candidate is gone');
 
   // Photos.
@@ -420,15 +425,15 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   // Same shape on the directory, whose gate is also a falsy-ish answer.
   await page.locator('[data-tab="today"]').click();
   await page.waitForTimeout(1500);
-  check((counts.browse_members || 0) === 1,
-        `browse_members fetched once too (was ${counts.browse_members || 0})`);
+  check((counts.my_slate || 0) === 1,
+        `my_slate fetched once too (was ${counts.my_slate || 0})`);
 
   // Going back and forth must not refetch what is already held.
   await page.locator('[data-tab="profile"]').click();
   await page.waitForTimeout(400);
   await page.locator('[data-tab="today"]').click();
   await page.waitForTimeout(400);
-  check((counts.my_profile || 0) === 1 && (counts.browse_members || 0) === 1,
+  check((counts.my_profile || 0) === 1 && (counts.my_slate || 0) === 1,
         'and revisiting a screen reuses what was fetched');
 
   await page.close();
@@ -789,6 +794,7 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
                     requester_id: 'u-y', requester_name: 'عمر', requester_status: 'admitted',
                     requester_age: 33, owner_id: 'u-x', owner_name: 'ليلى',
                     requests_by_requester: 1 }];
+  let memberTier = 'basic';
   const acted = [];
 
   await page.route('https://stub.supabase.co/**', async (route) => {
@@ -856,6 +862,10 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
         { at: new Date().toISOString(), kind: 'access', who: 'Owner',
           what: 'member', detail: null, subject: 'عمر' }]);
     }
+    if (url.includes('/rpc/admin_banned_emails')) {
+      return json([{ email: 'scammer@example.com', reason: 'asked_for_money',
+                     banned_by: 'Owner', created_at: new Date().toISOString() }]);
+    }
     if (url.includes('/rpc/admin_reviewers')) {
       return json([{ email: 'owner@nasib.app', full_name: 'Owner', role: 'admin',
                      active: true, is_me: true, decisions: 12,
@@ -876,8 +886,18 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
       requests = requests.filter((r) => r.id !== body.request_id);
       return json(null);
     }
+    if (url.includes('/rpc/admin_set_membership')) {
+      acted.push({ what: 'membership', id: body.target, level: body.level,
+                   months: body.months });
+      memberTier = body.level;
+      return json({ user_id: body.target, membership: body.level,
+                    membership_until: body.level === 'basic' ? null
+                      : '2027-04-01T00:00:00Z' });
+    }
     if (url.includes('/rpc/admin_member')) {
       return json({ user_id: body.target, display_name: 'عمر', age: 33, city: 'نابلس',
+                    membership: memberTier, membership_until: memberTier === 'basic'
+                      ? null : '2027-01-01T00:00:00Z',
                     status: 'admitted', marital_status: 'never_married',
                     practice_level: 'practicing', timeline: 'within_1_year',
                     bio: 'مهندس مدني.', occupation: 'مهندس', children_count: 0,
@@ -993,6 +1013,21 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
   check(member.includes('سجلّ القرارات'), 'and the decisions made about them');
   check(member.includes('2 بلاغ'), 'and the reports against them');
   check(!member.includes('phone'), 'and no phone number');
+  check(member.includes('الأساسية'), "and the membership they are on");
+
+  // The membership is set from the record, not from a table query: the
+  // reviewer who is about to change a tier is looking at the person.
+  await page.locator('#membership-months').selectOption('6');
+  await page.locator('[data-membership="golden"]').click();
+  await page.waitForTimeout(900);
+  check(acted.some((a) => a.what === 'membership' && a.level === 'golden'
+                          && a.months === 6),
+        'and a reviewer can grant a paid tier for a number of months');
+  const afterTier = await page.locator('#app').innerText();
+  check(afterTier.includes('الذهبية'), 'the record repaints on the new tier');
+  check(await page.locator('[data-membership="golden"][aria-pressed="true"]')
+              .count() === 1,
+        'with the granted tier marked as the current one');
 
   // ---------- 11. search, meetings and the audit trail ----------
   // Same page and stubs as above: these screens are part of the same
@@ -1025,6 +1060,9 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
         'and shows profiles opened, not only decisions made');
   check(audit.includes('محرّر SQL'),
         'saying plainly that access is granted only from the SQL editor');
+  check(audit.includes('scammer@example.com'), 'and lists the banned addresses');
+  check(audit.includes('حظر الحساب وحده لا يكفي'),
+        'with why an address is banned rather than only an account');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));
@@ -1181,7 +1219,8 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
     if (url.includes('/storage/v1/object/sign/')) {
       return json({ signedURL: '/object/sign/photos/u-m/a.jpg?token=abc' });
     }
-    if (url.includes('/rpc/browse_members')) return json({ gated: false, status: 'admitted', rows: [] });
+    if (url.includes('/rpc/my_slate')) return json({ gated: false, size: 5, cards: [] });
+    if (url.includes('/rpc/my_benefits')) return json({ membership: 'basic', daily_candidates: 5 });
     return json({}, 404);
   });
   await page.route('**/object/sign/photos/**', (route) => {
@@ -1320,6 +1359,292 @@ const check = (ok, label) => { console.log(`${ok ? '  ok  ' : ' FAIL '} ${label}
     return skipped;
   });
   check(wouldSkip, 'and a refresh while typing is skipped by the same condition the timer uses');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 14. banned accounts and one sign-in at a time ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  let banned = false;
+  let current = true;
+  let others = [];
+  const acted = [];
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-m', email: 'm@example.com' } });
+    }
+    if (url.includes('/auth/v1/logout')) { acted.push('logout'); return json({}); }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-m', email: 'm@example.com', is_admin: false,
+                    has_credential: true, is_anonymous: false, has_row: true, banned });
+    }
+    if (url.includes('/rpc/register_session')) {
+      return json({ tracked: true, current, others,
+                    ...(current ? {} : { reason: 'superseded' }) });
+    }
+    if (url.includes('/rpc/acknowledge_sessions')) { acted.push('ack'); return json({ acknowledged: true }); }
+    if (url.includes('/rpc/sign_out_other_sessions')) { acted.push('secure'); return json({ ended: 2 }); }
+    if (url.includes('/rpc/my_sessions')) {
+      return json([{ session_id: 's1', user_agent: 'Mozilla/5.0 (iPhone) Safari/605',
+                     started_at: new Date().toISOString(), is_this_one: true }]);
+    }
+    if (url.includes('/rpc/my_application')) return json({ status: 'admitted' });
+    if (url.includes('/rpc/my_profile')) {
+      return json({ user_id: 'u-m', status: 'admitted', display_name: 'حموده', photos: [] });
+    }
+    if (url.includes('/rpc/browse_members')) return json({ gated: false, status: 'admitted', rows: [] });
+    return json({}, 404);
+  });
+
+  // ── someone else signed in ──
+  others = [{ session_id: 's-other', user_agent: 'Mozilla/5.0 (Windows NT) Chrome/120',
+              started_at: new Date().toISOString() }];
+  await page.goto(`${base}/#/today`);
+  await page.waitForTimeout(1200);
+
+  check(await page.locator('#session-warning').count() === 1,
+        'a sign-in from somewhere else raises a warning');
+  const warn = await page.locator('#session-warning').innerText();
+  check(warn.includes('من جهاز آخر'), 'saying what happened');
+
+  await page.locator('[data-session-secure]').click();
+  await page.waitForTimeout(900);
+  check(acted.includes('secure'), '"that was not me" ends the other sessions');
+  check(page.url().includes('password'),
+        'and goes straight to changing the password — sessions ended first, then the password');
+
+  // ── "it was me" just dismisses ──
+  others = [{ session_id: 's-2', user_agent: 'x', started_at: new Date().toISOString() }];
+  await page.goto(`${base}/#/today`);
+  await page.waitForTimeout(1000);
+  await page.locator('[data-session-ack]').click();
+  await page.waitForTimeout(500);
+  check(acted.includes('ack'), '"it was me" marks them seen');
+  check(await page.locator('#session-warning').count() === 0, 'and the warning goes');
+
+  // ── displaced by a newer sign-in ──
+  // reload(), not goto(): navigating to the URL the page is already on
+  // changes nothing and the bootstrap never runs again, so the new stub
+  // state is never seen.
+  others = [];
+  current = false;
+  await page.reload();
+  await page.waitForTimeout(1400);
+  check(acted.includes('logout'), 'a displaced session signs itself out');
+  check(page.url().includes('login'), 'and is sent to sign in again');
+
+  // ── a banned account sees one screen ──
+  current = true;
+  banned = true;
+  await page.goto(`${base}/#/today`);
+  await page.reload();
+  await page.waitForTimeout(1200);
+  const closed = await page.locator('#app').innerText();
+  check(page.url().includes('closed'), 'a banned account is taken out of the app');
+  check(closed.includes('هذا الحساب مغلق'), 'and told so plainly');
+  check(!closed.includes('محظور') || !closed.includes('البريد'),
+        'without naming which detail is blocked — that is the thing they would change');
+
+  await page.close();
+  fs.unlinkSync(path.join(ROOT, 'config.js'));
+}
+
+// ---------- 15. swiping, matching, and the contact release ----------
+{
+  fs.writeFileSync(path.join(ROOT, 'config.js'),
+    'export const SUPABASE_URL = "https://stub.supabase.co";\nexport const SUPABASE_ANON_KEY = "anon";\n');
+
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  let cards = [
+    { id: 'c-1', rank: 0, decision: 'pending', display_name: 'ليلى', age: 29,
+      city: 'رام الله', bio: 'أدرس التمريض.', timeline: 'within_1_year',
+      marital_status: 'never_married', practice_level: 'practicing',
+      willing_to_relocate: true, family_aware: true, photo_count: 2 },
+    { id: 'c-2', rank: 1, decision: 'pending', display_name: 'هدى', age: 27,
+      city: 'نابلس', timeline: 'within_6_months', marital_status: 'never_married',
+      practice_level: 'practicing', willing_to_relocate: false, family_aware: true,
+      photo_count: 0 },
+  ];
+  let membership = 'basic';
+  let release = { exists: false };
+  const sent = [];
+
+  await page.route('https://stub.supabase.co/**', async (route) => {
+    const url = route.request().url();
+    const body = route.request().postDataJSON() || {};
+    const json = (b, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+
+    if (url.includes('/auth/v1/signup')) {
+      return json({ access_token: 't', refresh_token: 'r',
+                    expires_at: Math.floor(Date.now() / 1000) + 3600,
+                    user: { id: 'u-m', email: 'm@example.com' } });
+    }
+    if (url.includes('/rpc/whoami')) {
+      return json({ user_id: 'u-m', email: 'm@example.com', is_admin: false,
+                    has_credential: true, is_anonymous: false, has_row: true, banned: false });
+    }
+    if (url.includes('/rpc/register_session')) return json({ tracked: true, current: true, others: [] });
+    if (url.includes('/rpc/my_application')) return json({ status: 'admitted' });
+    if (url.includes('/rpc/my_benefits')) {
+      const b = { basic: { daily_candidates: 5, can_search: false, can_see_interest: false, release_discount: 0 },
+                  golden: { daily_candidates: 20, can_search: true, can_see_interest: true, release_discount: 100 } }[membership];
+      return json({ membership, ...b });
+    }
+    if (url.includes('/rpc/all_memberships')) {
+      return json([
+        { membership: 'basic', daily_candidates: 5, can_search: false,
+          can_see_interest: false, release_discount: 0, monthly_price: null, currency: 'ILS' },
+        { membership: 'premium', daily_candidates: 10, can_search: true,
+          can_see_interest: true, release_discount: 50, monthly_price: 40, currency: 'ILS' },
+        { membership: 'golden', daily_candidates: 20, can_search: true,
+          can_see_interest: true, release_discount: 100, monthly_price: 90, currency: 'ILS' }]);
+    }
+    if (url.includes('/rpc/my_slate')) {
+      return json({ gated: false, membership, size: 5, cards });
+    }
+    if (url.includes('/rpc/swipe')) {
+      sent.push({ id: body.candidate, interested: body.interested });
+      const card = cards.find((c) => c.id === body.candidate);
+      if (card) card.decision = body.interested ? 'interested' : 'declined';
+      // The second card's interest is mutual.
+      const matched = body.interested && body.candidate === 'c-2';
+      return json({ matched, match_id: matched ? 'match-1' : null });
+    }
+    if (url.includes('/rpc/search_members')) {
+      return json(membership === 'basic'
+        ? { allowed: false, gated: false, rows: [] }
+        : { allowed: true, gated: false,
+            rows: [{ id: 'c-9', display_name: 'سلمى', age: 30, city: 'الخليل',
+                     timeline: 'within_1_year', marital_status: 'never_married' }] });
+    }
+    if (url.includes('/rpc/my_admirers')) {
+      return json(membership === 'basic'
+        ? { allowed: false, count: 3, rows: [] }
+        : { allowed: true, count: 1,
+            rows: [{ id: 'c-7', display_name: 'ريم', age: 28, city: 'بيت لحم',
+                     timeline: 'within_1_year' }] });
+    }
+    if (url.includes('/rpc/my_matches')) {
+      return json([{ id: 'match-1', state: 'active', contact_unlocked: false,
+                     display_name: 'هدى', city: 'نابلس', age: 27, unread: 0 }]);
+    }
+    if (url.includes('/rpc/match_thread')) {
+      return json({ match_id: 'match-1', contact_unlocked: false, state: 'active', messages: [] });
+    }
+    if (url.includes('/rpc/my_release')) return json(release);
+    if (url.includes('/rpc/press_bingo')) {
+      release = { exists: true, state: 'pending_other', i_pressed: true,
+                  both_pressed: false, currency: 'ILS' };
+      return json({ state: 'pending_other', changed: true });
+    }
+    if (url.includes('/rpc/my_profile')) {
+      return json({ user_id: 'u-m', status: 'admitted', display_name: 'حموده', photos: [] });
+    }
+    if (url.includes('/rpc/my_sessions')) return json([]);
+    return json({}, 404);
+  });
+
+  // ── the deck ──
+  await page.goto(`${base}/#/today`);
+  await page.waitForTimeout(1200);
+  check(errors.length === 0, `no page errors on the deck ${errors.join('; ')}`);
+  const deck = await page.locator('#app').innerText();
+  check(deck.includes('ليلى'), 'the first card is shown');
+  check(!deck.includes('هدى'), 'one at a time, not a list');
+  check(await page.locator('[data-swipe="yes"]').count() === 1, 'with a yes and a no');
+
+  await page.locator('[data-swipe="no"]').click();
+  await page.waitForTimeout(700);
+  check(sent.some((x) => x.id === 'c-1' && x.interested === false), 'a left swipe is sent');
+  check((await page.locator('#app').innerText()).includes('هدى'),
+        'and the next card comes up');
+
+  // ── the match ──
+  await page.locator('[data-swipe="yes"]').click();
+  await page.waitForTimeout(800);
+  check(sent.some((x) => x.id === 'c-2' && x.interested === true), 'a right swipe is sent');
+  check(await page.locator('.match-overlay').count() === 1,
+        'mutual interest is shown, not toasted past');
+  check((await page.locator('.match-overlay').innerText()).includes('اهتمام متبادل'),
+        'saying what happened');
+
+  // ── Bingo ──
+  await page.locator('.match-overlay [data-open-match]').click();
+  await page.waitForTimeout(900);
+  const chat = await page.locator('#app').innerText();
+  check(chat.includes('بِنغو'), 'the open thread offers Bingo');
+  check(chat.includes('البيانات الشخصية محجوبة'),
+        'and says personal details are blocked until both agree');
+
+  const bingo = page.locator('[data-bingo]');
+  await bingo.click();
+  await page.waitForTimeout(250);
+  check(!release.exists, 'one tap on Bingo does not send it');
+  check((await bingo.innerText()).includes('تأكيد'), 'it asks for confirmation');
+  await bingo.click();
+  await page.waitForTimeout(800);
+  check(release.exists && release.state === 'pending_other', 'the second tap sends it');
+  const after = await page.locator('#app').innerText();
+  check(after.includes('طلبت تبادل الأرقام'), 'and the thread says it is waiting');
+  check(!after.includes('الطرف الآخر ضغط'),
+        'without saying anything about whether the other side pressed');
+
+  // ── the gates on a basic membership ──
+  await page.goto(`${base}/#/search`);
+  await page.waitForTimeout(900);
+  const search = await page.locator('#app').innerText();
+  check(search.includes('للعضويات المدفوعة'), 'search is gated for a basic member');
+  check(await page.locator('[name="city"]').count() === 0,
+        'and the form is not shown at all, rather than shown and refused');
+
+  await page.goto(`${base}/#/admirers`);
+  await page.waitForTimeout(900);
+  const adm = await page.locator('#app').innerText();
+  check(adm.includes('٣') || adm.includes('3'), 'a basic member is told how many are interested');
+  check(!adm.includes('ريم'), 'but not who');
+
+  // ── upgraded ──
+  // Reload: the cached answers are a minute fresh, and an upgrade in real
+  // life arrives with a new page load rather than inside one second.
+  membership = 'golden';
+  await page.goto(`${base}/#/membership`);
+  await page.reload();
+  await page.waitForTimeout(900);
+  const tiers = await page.locator('#app').innerText();
+  check(tiers.includes('الذهبية') && tiers.includes('المميّزة'), 'the tiers are listed');
+  check(tiers.includes('تبادل الأرقام بلا رسوم'), 'with what each one unlocks');
+  check(tiers.includes('لا تشتري قبولاً'),
+        'and that membership does not buy admission');
+
+  await page.goto(`${base}/#/admirers`);
+  await page.reload();
+  await page.waitForTimeout(1100);
+  check((await page.locator('#app').innerText()).includes('ريم'),
+        'a paying member sees who is interested');
+
+  await page.goto(`${base}/#/search`);
+  await page.reload();
+  await page.waitForTimeout(1100);
+  check(await page.locator('[name="city"]').count() === 1, 'and gets the search form');
+  await page.locator('#search-run').click();
+  await page.waitForTimeout(800);
+  check((await page.locator('#app').innerText()).includes('سلمى'), 'which returns results');
 
   await page.close();
   fs.unlinkSync(path.join(ROOT, 'config.js'));

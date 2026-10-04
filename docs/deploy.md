@@ -25,8 +25,27 @@ node tool/bundle-migrations.mjs > setup.sql
 Paste that into the SQL editor and run it. It is wrapped in a
 transaction, so a failure applies nothing and names the statement, rather
 than leaving half a schema behind that fails later as what looks like an
-application bug. Running the eleven files individually, in order, works
-too.
+application bug. Running the files individually, in order, works too.
+
+**Paste the same bundle again after any change.** It is written to be
+re-runnable: a type that exists is left alone, a table that exists is
+left alone with its rows, a function or policy is replaced with the new
+version. So the answer to "which migrations do I still need?" is always
+"paste the bundle", and `supabase/tests/rerun.sh` is what keeps that
+true — it builds a database up to the previous migration, pastes the
+whole bundle over it, and checks that the new objects landed, that a
+member row survived, and that no policy was left dropped.
+
+If a paste ever does fail with `type "..." already exists` or
+`relation "..." already exists`, that is a bug in a migration rather
+than something about your database: a new statement went in without its
+guard. The two to copy are `create table if not exists` and
+
+```sql
+do $ddl$ begin
+  create type my_type as enum ('a', 'b');
+exception when duplicate_object then null; end $ddl$;
+```
 
 Do *not* run `supabase/local/00_supabase_stubs.sql` against a hosted
 project — it fakes the `auth` schema for local testing and would
@@ -192,6 +211,41 @@ trail catches. And you cannot admit your own account: an admin who can is
 an admin whose own profile was never reviewed.
 
 To check it worked before touching the app: `select * from admin_users;`
+
+---
+
+## 1b-2. Account security
+
+Three things worth knowing about how accounts behave, because each has a
+limit that is easy to misread as a bug.
+
+**One sign-in at a time.** Signing in on a new device ends the session on
+the old one. The displaced device finds out on its next poll (within
+twenty seconds), says so, and returns to the sign-in screen.
+
+**Someone else signed in.** The account's owner is warned, in the app,
+with the device and the time — and one button that ends every other
+session and takes them to change the password, in that order. An intruder
+holding a live session is not removed by a new password; only by the
+session ending.
+
+We cannot report *failed* sign-in attempts. Authentication happens inside
+Supabase's auth service, and a wrong password never reaches our code.
+What is reported is a successful sign-in from somewhere else, which is
+the signal a person can act on and the one an attacker cannot avoid
+producing.
+
+**Banning an address**, from السجلّ on the review desk. It bans the
+address, not just the account: banning the account alone means the same
+person is back in two minutes with a new email. Banning also ends every
+session that account holds, so it takes effect immediately rather than
+whenever a token expires. Lifting a ban frees the address; it does not
+reopen the old account, because those are two different decisions.
+
+What is deliberately *not* stored: the IP address of a sign-in. It would
+make the list read better ("from Ramallah") and it is a location history
+of a person on a marriage app, kept indefinitely, for a feature that
+works without it.
 
 ---
 

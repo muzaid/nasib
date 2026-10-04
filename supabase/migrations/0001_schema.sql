@@ -15,53 +15,85 @@ create schema if not exists biometric;
 -- Enumerations
 -- ---------------------------------------------------------------------
 
-create type account_status as enum (
-  'applying',        -- still filling in the application
-  'pending_review',  -- submitted, agent or human deciding
-  'admitted',
-  'rejected',
-  'shadow_limited',  -- visible but receives no new candidates
-  'suspended',
-  'banned',
-  'paused',          -- user-initiated (e.g. engaged)
-  'closed'
-);
+do $ddl$ begin
+  create type account_status as enum (
+    'applying',        -- still filling in the application
+    'pending_review',  -- submitted, agent or human deciding
+    'admitted',
+    'rejected',
+    'shadow_limited',  -- visible but receives no new candidates
+    'suspended',
+    'banned',
+    'paused',          -- user-initiated (e.g. engaged)
+    'closed'
+  );
+exception when duplicate_object then null; end $ddl$;
 
-create type gender_t            as enum ('male','female');
-create type marital_status_t    as enum ('never_married','divorced','widowed');
-create type practice_level_t    as enum ('practicing','moderately_practicing','cultural','prefer_not_to_say');
-create type timeline_t          as enum ('within_6_months','within_1_year','within_2_years','when_right_person');
-create type wali_level_t        as enum ('off','notified','chaperoned','gated');
-create type photo_visibility_t  as enum ('hidden','blurred','on_match','visible_to_verified');
-create type tier_t              as enum ('bronze','gold','family');
+do $ddl$ begin
+  create type gender_t            as enum ('male','female');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type marital_status_t    as enum ('never_married','divorced','widowed');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type practice_level_t    as enum ('practicing','moderately_practicing','cultural','prefer_not_to_say');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type timeline_t          as enum ('within_6_months','within_1_year','within_2_years','when_right_person');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type wali_level_t        as enum ('off','notified','chaperoned','gated');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type photo_visibility_t  as enum ('hidden','blurred','on_match','visible_to_verified');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type tier_t              as enum ('bronze','gold','family');
+exception when duplicate_object then null; end $ddl$;
 
-create type verification_type_t as enum (
-  'phone','device','liveness','face_match','duplicate_face',
-  'reverse_image','document','consistency','intent','scam_pattern','behavioural'
-);
-create type verification_result_t as enum ('pass','fail','inconclusive','skipped','error');
+do $ddl$ begin
+  create type verification_type_t as enum (
+    'phone','device','liveness','face_match','duplicate_face',
+    'reverse_image','document','consistency','intent','scam_pattern','behavioural'
+  );
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type verification_result_t as enum ('pass','fail','inconclusive','skipped','error');
+exception when duplicate_object then null; end $ddl$;
 
-create type decision_band_t as enum ('auto_admit','review','auto_reject');
+do $ddl$ begin
+  create type decision_band_t as enum ('auto_admit','review','auto_reject');
+exception when duplicate_object then null; end $ddl$;
 
-create type admin_action_t as enum (
-  'admit','admit_with_note','request_evidence','reject',
-  'shadow_limit','lift_limit','ban_device','ban_face','ban_account','unban'
-);
+do $ddl$ begin
+  create type admin_action_t as enum (
+    'admit','admit_with_note','request_evidence','reject',
+    'shadow_limit','lift_limit','ban_device','ban_face','ban_account','unban'
+  );
+exception when duplicate_object then null; end $ddl$;
 
-create type report_reason_t as enum (
-  'fake_profile','already_married','asked_for_money','harassment',
-  'inappropriate_content','not_serious','underage','other'
-);
+do $ddl$ begin
+  create type report_reason_t as enum (
+    'fake_profile','already_married','asked_for_money','harassment',
+    'inappropriate_content','not_serious','underage','other'
+  );
+exception when duplicate_object then null; end $ddl$;
 
-create type match_state_t   as enum ('pending','active','unmatched','blocked','progressed');
-create type outcome_kind_t  as enum ('married','engaged','ended','not_compatible','left_platform');
-create type slate_decision_t as enum ('pending','interested','declined','expired');
+do $ddl$ begin
+  create type match_state_t   as enum ('pending','active','unmatched','blocked','progressed');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type outcome_kind_t  as enum ('married','engaged','ended','not_compatible','left_platform');
+exception when duplicate_object then null; end $ddl$;
+do $ddl$ begin
+  create type slate_decision_t as enum ('pending','interested','declined','expired');
+exception when duplicate_object then null; end $ddl$;
 
 -- ---------------------------------------------------------------------
 -- Identity
 -- ---------------------------------------------------------------------
 
-create table users (
+create table if not exists users (
   id              uuid primary key references auth.users(id) on delete cascade,
   phone_e164      text not null unique,
   gender          gender_t not null,
@@ -79,14 +111,14 @@ create table users (
   constraint users_adult_only check (date_of_birth <= (current_date - interval '18 years'))
 );
 
-create index users_status_idx      on users(status);
-create index users_discovery_idx   on users(status, gender, country_code, city);
+create index if not exists users_status_idx      on users(status);
+create index if not exists users_discovery_idx   on users(status, gender, country_code, city);
 
 -- ---------------------------------------------------------------------
 -- Profile and declared intent
 -- ---------------------------------------------------------------------
 
-create table profiles (
+create table if not exists profiles (
   user_id            uuid primary key references users(id) on delete cascade,
   display_name       text not null,
   bio                text,
@@ -120,7 +152,7 @@ create table profiles (
 );
 
 -- Hard filters the matcher must never override.
-create table match_preferences (
+create table if not exists match_preferences (
   user_id             uuid primary key references users(id) on delete cascade,
   age_min             int not null,
   age_max             int not null,
@@ -135,7 +167,7 @@ create table match_preferences (
   constraint sane_age_range check (age_min >= 18 and age_max >= age_min)
 );
 
-create table compatibility_answers (
+create table if not exists compatibility_answers (
   user_id       uuid not null references users(id) on delete cascade,
   question_key  text not null,
   answer        text not null,
@@ -143,7 +175,7 @@ create table compatibility_answers (
   primary key (user_id, question_key)
 );
 
-create table photos (
+create table if not exists photos (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references users(id) on delete cascade,
   storage_path  text not null,
@@ -155,7 +187,7 @@ create table photos (
   created_at    timestamptz not null default now()
 );
 
-create index photos_user_idx on photos(user_id, ordinal);
+create index if not exists photos_user_idx on photos(user_id, ordinal);
 
 -- ---------------------------------------------------------------------
 -- Verification
@@ -164,7 +196,7 @@ create index photos_user_idx on photos(user_id, ordinal);
 -- One row per check run. Never updated, never overwritten: when a
 -- threshold changes you must still be able to see which rules a past
 -- decision was made under.
-create table verifications (
+create table if not exists verifications (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references users(id) on delete cascade,
   run_id        uuid not null,                   -- groups the checks of one pipeline run
@@ -177,12 +209,12 @@ create table verifications (
   created_at    timestamptz not null default now()
 );
 
-create index verifications_user_idx on verifications(user_id, created_at desc);
-create index verifications_run_idx  on verifications(run_id);
+create index if not exists verifications_user_idx on verifications(user_id, created_at desc);
+create index if not exists verifications_run_idx  on verifications(run_id);
 
 -- Vendor payloads and document images. `delete_after` is a column the
 -- system acts on, not a policy in a document — see purge_expired_evidence().
-create table verification_evidence (
+create table if not exists verification_evidence (
   id              uuid primary key default gen_random_uuid(),
   verification_id uuid not null references verifications(id) on delete cascade,
   kind            text not null,                 -- 'document_image' | 'liveness_frame' | 'vendor_payload'
@@ -192,10 +224,10 @@ create table verification_evidence (
   created_at      timestamptz not null default now()
 );
 
-create index evidence_expiry_idx on verification_evidence(delete_after);
+create index if not exists evidence_expiry_idx on verification_evidence(delete_after);
 
 -- Identity and intent are held separately and never blended into one number.
-create table trust_scores (
+create table if not exists trust_scores (
   user_id             uuid primary key references users(id) on delete cascade,
   identity_confidence int not null default 0 check (identity_confidence between 0 and 100),
   intent_confidence   int not null default 0 check (intent_confidence   between 0 and 100),
@@ -204,7 +236,7 @@ create table trust_scores (
   computed_at         timestamptz not null default now()
 );
 
-create table trust_score_history (
+create table if not exists trust_score_history (
   id                  bigserial primary key,
   user_id             uuid not null references users(id) on delete cascade,
   identity_confidence int not null,
@@ -214,7 +246,7 @@ create table trust_score_history (
   created_at          timestamptz not null default now()
 );
 
-create table devices (
+create table if not exists devices (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references users(id) on delete cascade,
   fingerprint      text not null,
@@ -225,15 +257,15 @@ create table devices (
   unique (user_id, fingerprint)
 );
 
-create index devices_fingerprint_idx on devices(fingerprint);
+create index if not exists devices_fingerprint_idx on devices(fingerprint);
 
-create table banned_devices (
+create table if not exists banned_devices (
   fingerprint text primary key,
   reason      text,
   banned_at   timestamptz not null default now()
 );
 
-create table banned_phones (
+create table if not exists banned_phones (
   phone_e164 text primary key,
   reason     text,
   banned_at  timestamptz not null default now()
@@ -241,19 +273,19 @@ create table banned_phones (
 
 -- --- biometric schema: isolated, separately encrypted, no readable FKs ---
 
-create table biometric.face_embeddings (
+create table if not exists biometric.face_embeddings (
   user_id    uuid primary key,
   embedding  vector(512) not null,
   model      text not null,
   created_at timestamptz not null default now()
 );
 
-create index face_embeddings_ann_idx
+create index if not exists face_embeddings_ann_idx
   on biometric.face_embeddings using hnsw (embedding vector_cosine_ops);
 
 -- Vectors from removed accounts, with no identity attached. This is what
 -- stops a banned user returning with a new phone number.
-create table biometric.banned_embeddings (
+create table if not exists biometric.banned_embeddings (
   id         uuid primary key default gen_random_uuid(),
   embedding  vector(512) not null,
   model      text not null,
@@ -261,14 +293,14 @@ create table biometric.banned_embeddings (
   banned_at  timestamptz not null default now()
 );
 
-create index banned_embeddings_ann_idx
+create index if not exists banned_embeddings_ann_idx
   on biometric.banned_embeddings using hnsw (embedding vector_cosine_ops);
 
 -- ---------------------------------------------------------------------
 -- Wali / guardian
 -- ---------------------------------------------------------------------
 
-create table guardians (
+create table if not exists guardians (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null references users(id) on delete cascade,
   guardian_user_id  uuid references users(id) on delete set null,
@@ -281,7 +313,7 @@ create table guardians (
   revoked_at        timestamptz
 );
 
-create index guardians_user_idx on guardians(user_id) where revoked_at is null;
+create index if not exists guardians_user_idx on guardians(user_id) where revoked_at is null;
 
 -- ---------------------------------------------------------------------
 -- Discovery and matching
@@ -289,7 +321,7 @@ create index guardians_user_idx on guardians(user_id) where revoked_at is null;
 
 -- The daily slate is materialised, not computed on request: it enforces
 -- the daily limit honestly and records what each user was actually shown.
-create table candidate_slates (
+create table if not exists candidate_slates (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references users(id) on delete cascade,
   slate_date  date not null,
@@ -297,7 +329,7 @@ create table candidate_slates (
   unique (user_id, slate_date)
 );
 
-create table candidate_items (
+create table if not exists candidate_items (
   slate_id          uuid not null references candidate_slates(id) on delete cascade,
   candidate_user_id uuid not null references users(id) on delete cascade,
   rank              int not null,
@@ -308,7 +340,7 @@ create table candidate_items (
   primary key (slate_id, candidate_user_id)
 );
 
-create table matches (
+create table if not exists matches (
   id                uuid primary key default gen_random_uuid(),
   user_a            uuid not null references users(id) on delete cascade,
   user_b            uuid not null references users(id) on delete cascade,
@@ -322,10 +354,10 @@ create table matches (
   unique (user_a, user_b)
 );
 
-create index matches_user_a_idx on matches(user_a, state);
-create index matches_user_b_idx on matches(user_b, state);
+create index if not exists matches_user_a_idx on matches(user_a, state);
+create index if not exists matches_user_b_idx on matches(user_b, state);
 
-create table messages (
+create table if not exists messages (
   id          uuid primary key default gen_random_uuid(),
   match_id    uuid not null references matches(id) on delete cascade,
   sender_id   uuid not null references users(id) on delete cascade,
@@ -336,9 +368,9 @@ create table messages (
   created_at  timestamptz not null default now()
 );
 
-create index messages_match_idx on messages(match_id, created_at desc);
+create index if not exists messages_match_idx on messages(match_id, created_at desc);
 
-create table outcomes (
+create table if not exists outcomes (
   id          uuid primary key default gen_random_uuid(),
   match_id    uuid references matches(id) on delete set null,
   user_id     uuid not null references users(id) on delete cascade,
@@ -351,7 +383,7 @@ create table outcomes (
 -- Safety and moderation
 -- ---------------------------------------------------------------------
 
-create table reports (
+create table if not exists reports (
   id            uuid primary key default gen_random_uuid(),
   reporter_id   uuid not null references users(id) on delete set null,
   reported_id   uuid not null references users(id) on delete cascade,
@@ -363,16 +395,16 @@ create table reports (
   resolved_at   timestamptz
 );
 
-create index reports_open_idx on reports(status, created_at) where status = 'open';
+create index if not exists reports_open_idx on reports(status, created_at) where status = 'open';
 
-create table blocks (
+create table if not exists blocks (
   blocker_id  uuid not null references users(id) on delete cascade,
   blocked_id  uuid not null references users(id) on delete cascade,
   created_at  timestamptz not null default now(),
   primary key (blocker_id, blocked_id)
 );
 
-create table admin_users (
+create table if not exists admin_users (
   id          uuid primary key references auth.users(id) on delete cascade,
   email       text not null unique,
   full_name   text not null,
@@ -383,7 +415,7 @@ create table admin_users (
 
 -- Append-only. Audit trail, dispute defence, and the labelled dataset
 -- used to tune the agent's thresholds.
-create table admin_decisions (
+create table if not exists admin_decisions (
   id                     uuid primary key default gen_random_uuid(),
   admin_id               uuid not null references admin_users(id),
   subject_user_id        uuid not null references users(id) on delete cascade,
@@ -397,9 +429,9 @@ create table admin_decisions (
   created_at             timestamptz not null default now()
 );
 
-create index admin_decisions_subject_idx on admin_decisions(subject_user_id, created_at desc);
+create index if not exists admin_decisions_subject_idx on admin_decisions(subject_user_id, created_at desc);
 
-create table appeals (
+create table if not exists appeals (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references users(id) on delete cascade,
   message     text not null,
@@ -410,7 +442,7 @@ create table appeals (
 
 -- Every profile a reviewer opens is logged. An insider abusing the
 -- console is a more likely breach than an external attacker.
-create table admin_access_log (
+create table if not exists admin_access_log (
   id          bigserial primary key,
   admin_id    uuid not null references admin_users(id),
   subject_user_id uuid,
@@ -419,7 +451,7 @@ create table admin_access_log (
   created_at  timestamptz not null default now()
 );
 
-create table subscriptions (
+create table if not exists subscriptions (
   user_id     uuid primary key references users(id) on delete cascade,
   tier        tier_t not null,
   provider    text not null,                     -- apple | google

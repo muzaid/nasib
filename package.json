@@ -8,6 +8,8 @@
     "test": "node --test apps/web/test/redact.test.mjs apps/web/test/data.test.mjs",
     "test:browser": "node apps/web/test/browser.mjs",
     "test:sql": "./supabase/tests/run.sh",
+    "db:bundle": "node tool/bundle-migrations.mjs",
+    "db:apply": "node tool/apply-migrations.mjs",
     "dev": "python3 apps/web/serve.py"
   },
   "engines": {

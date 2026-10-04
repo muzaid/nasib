@@ -96,7 +96,9 @@ $$;
 -- Own-row access
 -- ---------------------------------------------------------------------
 
-create policy users_self_read   on users       for select using (auth.uid() = id or is_admin());
+drop policy if exists users_self_read on users;
+create policy users_self_read on users       for select using (auth.uid() = id or is_admin());
+drop policy if exists users_self_update on users;
 create policy users_self_update on users       for update using (auth.uid() = id)
   with check (auth.uid() = id);
 
@@ -116,28 +118,35 @@ begin
 end;
 $$;
 
-create trigger users_guard_privileged
+create or replace trigger users_guard_privileged
   before update on users
   for each row execute function guard_privileged_user_columns();
 
+drop policy if exists profiles_read on profiles;
 create policy profiles_read on profiles for select
   using (can_view_profile(auth.uid(), user_id) or is_admin());
+drop policy if exists profiles_write on profiles;
 create policy profiles_write on profiles for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists prefs_own on match_preferences;
 create policy prefs_own on match_preferences for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists answers_read on compatibility_answers;
 create policy answers_read on compatibility_answers for select
   using (can_view_profile(auth.uid(), user_id) or is_admin());
+drop policy if exists answers_write on compatibility_answers;
 create policy answers_write on compatibility_answers for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Photo rows are readable when the profile is; the storage bucket is
 -- private and served only through short-lived signed URLs, so row access
 -- alone reveals nothing.
+drop policy if exists photos_read on photos;
 create policy photos_read on photos for select
   using (can_view_profile(auth.uid(), user_id) or is_admin());
+drop policy if exists photos_write on photos;
 create policy photos_write on photos for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -145,6 +154,7 @@ create policy photos_write on photos for all
 -- Verification: readable by the owner in summary form, writable by nobody
 -- ---------------------------------------------------------------------
 
+drop policy if exists verifications_own_read on verifications;
 create policy verifications_own_read on verifications for select
   using (auth.uid() = user_id or is_admin());
 
@@ -152,18 +162,23 @@ create policy verifications_own_read on verifications for select
 -- Same for biometric tables — a leak of the vector store must reveal
 -- nothing on its own, and nothing in the app ever needs to read it.
 
+drop policy if exists trust_scores_admin_read on trust_scores;
 create policy trust_scores_admin_read on trust_scores for select using (is_admin());
+drop policy if exists trust_history_admin_read on trust_score_history;
 create policy trust_history_admin_read on trust_score_history for select using (is_admin());
 
+drop policy if exists devices_own on devices;
 create policy devices_own on devices for select using (auth.uid() = user_id or is_admin());
 
 -- ---------------------------------------------------------------------
 -- Guardians
 -- ---------------------------------------------------------------------
 
+drop policy if exists guardians_own on guardians;
 create policy guardians_own on guardians for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists guardians_as_guardian_read on guardians;
 create policy guardians_as_guardian_read on guardians for select
   using (auth.uid() = guardian_user_id);
 
@@ -171,22 +186,28 @@ create policy guardians_as_guardian_read on guardians for select
 -- Discovery
 -- ---------------------------------------------------------------------
 
+drop policy if exists slates_own on candidate_slates;
 create policy slates_own on candidate_slates for select using (auth.uid() = user_id);
+drop policy if exists slate_items_own_read on candidate_items;
 create policy slate_items_own_read on candidate_items for select
   using (exists (select 1 from candidate_slates s
                  where s.id = slate_id and s.user_id = auth.uid()));
+drop policy if exists slate_items_own_decide on candidate_items;
 create policy slate_items_own_decide on candidate_items for update
   using (exists (select 1 from candidate_slates s
                  where s.id = slate_id and s.user_id = auth.uid()))
   with check (exists (select 1 from candidate_slates s
                       where s.id = slate_id and s.user_id = auth.uid()));
 
+drop policy if exists matches_participant on matches;
 create policy matches_participant on matches for select
   using (auth.uid() in (user_a, user_b) or is_admin());
+drop policy if exists matches_participant_update on matches;
 create policy matches_participant_update on matches for update
   using (auth.uid() in (user_a, user_b))
   with check (auth.uid() in (user_a, user_b));
 
+drop policy if exists messages_participant_read on messages;
 create policy messages_participant_read on messages for select
   using (
     exists (select 1 from matches m
@@ -203,6 +224,7 @@ create policy messages_participant_read on messages for select
     or is_admin()
   );
 
+drop policy if exists messages_send on messages;
 create policy messages_send on messages for insert
   with check (
     auth.uid() = sender_id
@@ -214,6 +236,7 @@ create policy messages_send on messages for insert
     )
   );
 
+drop policy if exists outcomes_own on outcomes;
 create policy outcomes_own on outcomes for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -223,16 +246,21 @@ create policy outcomes_own on outcomes for all
 
 -- A reporter may create a report and see their own. The reported user can
 -- never see that they were reported, or by whom.
+drop policy if exists reports_create on reports;
 create policy reports_create on reports for insert with check (auth.uid() = reporter_id);
+drop policy if exists reports_own_read on reports;
 create policy reports_own_read on reports for select
   using (auth.uid() = reporter_id or is_admin());
 
+drop policy if exists blocks_own on blocks;
 create policy blocks_own on blocks for all
   using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
 
+drop policy if exists appeals_own on appeals;
 create policy appeals_own on appeals for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists subscriptions_own_read on subscriptions;
 create policy subscriptions_own_read on subscriptions for select
   using (auth.uid() = user_id or is_admin());
 
@@ -240,11 +268,15 @@ create policy subscriptions_own_read on subscriptions for select
 -- Admin
 -- ---------------------------------------------------------------------
 
+drop policy if exists admin_users_self on admin_users;
 create policy admin_users_self on admin_users for select using (auth.uid() = id or is_admin());
+drop policy if exists admin_decisions_read on admin_decisions;
 create policy admin_decisions_read on admin_decisions for select using (is_admin());
+drop policy if exists admin_decisions_insert on admin_decisions;
 create policy admin_decisions_insert on admin_decisions for insert with check (is_admin());
+drop policy if exists admin_access_log_insert on admin_access_log;
 create policy admin_access_log_insert on admin_access_log for insert with check (is_admin());
 
 -- admin_decisions is append-only, including for admins.
-create rule admin_decisions_no_update as on update to admin_decisions do instead nothing;
-create rule admin_decisions_no_delete as on delete to admin_decisions do instead nothing;
+create or replace rule admin_decisions_no_update as on update to admin_decisions do instead nothing;
+create or replace rule admin_decisions_no_delete as on delete to admin_decisions do instead nothing;

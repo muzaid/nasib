@@ -471,3 +471,55 @@ button.code-line:active { background: var(--teal-soft); }
   font-size: 17px; line-height: 1; cursor: pointer;
 }
 img[data-zoom] { cursor: zoom-in; }
+
+/* The sign-in warning sits above everything, because a warning on a
+   screen nobody opens is not a warning. */
+.session-warning {
+  position: fixed; z-index: 50;
+  inset-inline: 12px; top: calc(12px + env(safe-area-inset-top, 0px));
+  max-width: 480px; margin: 0 auto;
+  background: var(--panel); border: 1px solid var(--danger);
+  border-radius: 14px; padding: 14px 16px;
+  box-shadow: 0 8px 28px rgba(12, 22, 33, .16);
+}
+.session-warning .btn { padding: 9px 0; font-size: 14px; }
+
+/* ---------------- the deck ---------------- */
+
+.deck { position: relative; }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 18px; overflow: hidden;
+  box-shadow: 0 6px 22px rgba(12, 22, 33, .07);
+  transition: transform .16s ease, opacity .16s ease;
+}
+.card-photos {
+  display: flex; gap: 4px; padding: 4px; background: var(--page);
+  min-height: 150px;
+}
+.card-photos .veil { flex: 1; aspect-ratio: 3 / 4; }
+.card-nophoto {
+  flex: 1; display: flex; flex-direction: column; gap: 6px;
+  align-items: center; justify-content: center; min-height: 140px;
+}
+.card-body { padding: 16px 18px 18px; }
+
+/* Leaving the deck. Short, because the next card is the point. */
+.card.fly-yes { transform: translateX(-120%) rotate(-8deg); opacity: 0; }
+.card.fly-no  { transform: translateX(120%) rotate(8deg); opacity: 0; }
+
+.swipe-row {
+  display: flex; gap: 18px; justify-content: center; margin-top: 18px;
+}
+.swipe-btn {
+  width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--panel); cursor: pointer;
+  display: grid; place-items: center; font-size: 24px; line-height: 1;
+  box-shadow: 0 4px 14px rgba(12, 22, 33, .08);
+}
+.swipe-btn.no  { color: var(--danger); }
+.swipe-btn.yes { background: var(--teal); border-color: var(--teal); }
+.swipe-btn:active { transform: scale(.94); }
+
+.match-overlay { cursor: default; }
+.match-overlay .btn { min-width: 220px; }

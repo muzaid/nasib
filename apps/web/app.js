@@ -95,6 +95,13 @@ const state = {
   // request was still in flight.
   profile: null,
   members: null,
+  slate: null,
+  benefits: null,
+  admirers: null,
+  searchFilters: {},
+  searchRows: null,
+  memberships: null,
+  release: null,
   queue: null,
   queueFilter: 'waiting',
   photoQueue: null,
@@ -105,6 +112,7 @@ const state = {
   slots: [],
   audit: null,
   reviewers: null,
+  bannedEmails: null,
   myRequests: null,
   myGrants: null,
   matches: null,
@@ -113,12 +121,16 @@ const state = {
   meetings: null,
   photoRequests: null,
   reports: null,
+  releases: null,
+  releaseFilter: 'pending',
   stats: null,
   member: null,
   memberId: '',
   gate: '',
   missingRoute: '',
   startupError: '',
+  sessions: null,
+  banned: false,
   loginMode: 'signin',
   isAdmin: false,
   userId: '',
@@ -155,6 +167,41 @@ function eighteenYearsAgo() {
 }
 
 /**
+ * The moment interest turns out to be mutual.
+ *
+ * Shown rather than toasted because it is the only thing in this product
+ * that is unambiguously good news, and because the next step — a
+ * conversation — should be one tap from it.
+ */
+function showMatch(matchId) {
+  const overlay = h(`
+    <div class="lightbox match-overlay" role="dialog" aria-modal="true">
+      <div style="text-align:center;max-width:320px">
+        ${star(54, 'var(--accent)')}
+        <h2 style="color:#fff;margin:18px 0 6px;font-size:26px">اهتمام متبادل</h2>
+        <p style="color:rgba(255,255,255,.82);font-size:15px;line-height:1.9;margin:0">
+          كلاكما أبدى اهتمامه بالآخر. فُتحت المحادثة — وتبقى البيانات الشخصية
+          محجوبة فيها حتى تتفقا على ذلك.
+        </p>
+        <button class="btn" style="margin-top:20px" data-open-match="${escapeAttr(matchId)}">
+          ابدأ المحادثة
+        </button>
+        <button class="btn quiet" style="margin-top:8px;color:#fff" data-close-overlay>
+          لاحقاً
+        </button>
+      </div>
+    </div>`);
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay || event.target.hasAttribute('data-close-overlay')) {
+      overlay.remove();
+      render('today');
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+/**
  * Full-screen photo, closed by tapping anywhere or pressing Escape.
  *
  * Built and destroyed per use rather than left in the DOM: an element
@@ -178,6 +225,28 @@ function openLightbox(src, alt = '') {
   overlay.addEventListener('click', close);
   document.addEventListener('keydown', onKey);
   document.body.appendChild(overlay);
+}
+
+/**
+ * A user agent, as something a person can recognise.
+ *
+ * Deliberately coarse. The aim is "was that me?", which needs "an iPhone"
+ * or "a Windows computer" — not a version string, and not a fingerprint
+ * precise enough to be worth keeping.
+ */
+function deviceName(agent = '') {
+  const ua = String(agent || '');
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone'
+    : /Android/.test(ua) ? 'هاتف أندرويد'
+    : /Mac OS X/.test(ua) ? 'جهاز Mac'
+    : /Windows/.test(ua) ? 'جهاز Windows'
+    : /Linux/.test(ua) ? 'جهاز Linux'
+    : 'جهاز غير معروف';
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Safari\//.test(ua) ? 'Safari' : '';
+  return browser ? `${os} · ${browser}` : os;
 }
 
 let toastTimer;
@@ -526,133 +595,154 @@ async function loadMembers() {
   }
 }
 
+/**
+ * The deck.
+ *
+ * Cards you swipe, but a handful a day rather than an endless stack —
+ * which is the whole argument of this product, and the reason the
+ * membership buys more of them rather than removing the limit.
+ *
+ * Interest stays one-directional: swiping right tells nobody. A person
+ * who was passed over is never told, and a person who was chosen is told
+ * only if they chose back.
+ */
 screens.today = () => {
-  // Live: real admitted members. Otherwise the fixtures, as before.
-  const live = state.db && state.members;
+  const live = !!state.db;
 
-  if (live && state.gate) {
-    return `
-      <div class="screen">
-        ${appbar('اليوم', { back: false })}
-        <div class="pad center" style="min-height:60vh;text-align:center">
-          <div>
-            ${star(30)}
-            <h3 class="hd" style="margin-top:18px">لم يُفتح هذا القسم بعد</h3>
-            <p class="body" style="color:var(--ink-soft)">
-              ${state.gate === 'none'
-                ? 'لم تُرسل طلب انضمام بعد. نعرض عليك أشخاصاً بعد قبول طلبك،'
-                  + ' لأن الطرف الآخر مرّ بالمراجعة نفسها.'
-                : `حالة طلبك: ${word('status', state.gate)}. نعرض عليك أشخاصاً بعد`
-                  + ' قبول طلبك، لأن الطرف الآخر مرّ بالمراجعة نفسها.'}
-            </p>
-            <button class="btn quiet" style="margin-top:10px" data-go="${
-              state.gate === 'none' ? 'apply' : 'profile'}">${
-              state.gate === 'none' ? 'ابدأ طلب الانضمام' : 'ملفي'}</button>
-          </div>
-        </div>
-      </div>`;
+  if (live && state.slate === null) {
+    return `<div class="screen">${appbar('اليوم', { back: false })}
+      <div class="pad"><div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div></div></div>`;
   }
 
-  const pool = live ? state.members : DEMO.candidates;
-  const c = pool[state.candidate];
-
-  if (!c && live) {
+  if (live && state.slate?.gated) {
     return `
-      <div class="screen">
-        ${appbar('اليوم', { back: false })}
-        <div class="pad center" style="min-height:60vh;text-align:center">
-          <div>
-            ${star(30)}
-            <h3 class="hd" style="margin-top:18px">${
-              state.members.length === 0 ? 'لا أحد بعد' : 'انتهت مرشّحات اليوم'}</h3>
-            <p class="body" style="color:var(--ink-soft)">
-              ${state.members.length === 0
-                ? 'لم يُقبل أحد غيرك حتى الآن. القبول قرار بشري، ويحتاج شخصاً في مكتب المراجعة.'
-                : 'نعرض خمسة إلى ثمانية أشخاص في اليوم. عدد قليل يُقرأ، وعدد كبير يُمرَّر.'}
-            </p>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  if (!c) {
-    return `
-      <div class="screen">
-        ${appbar('اليوم', { back: false })}
-        <div class="pad center" style="min-height:60vh;text-align:center">
-          <div>
-            ${star(30)}
-            <h3 class="hd" style="margin-top:18px">انتهت مرشّحات اليوم</h3>
-            <p class="body" style="color:var(--ink-soft)">
-              نعرض خمسة إلى ثمانية أشخاص في اليوم. عدد قليل يُقرأ، وعدد كبير يُمرَّر.
-            </p>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  return `
     <div class="screen">
-      ${appbar('اليوم', { back: false, side: `${pool.length - state.candidate} متبقّون` })}
-      <div class="pad">
-        <div style="display:flex;align-items:flex-start;gap:12px">
-          <div style="flex:1;min-width:0">
-            <h3 class="hd" style="margin:0">${c.name}، ${c.age}</h3>
-            <p class="sub" style="margin:2px 0 0">${c.city} · ${c.work}</p>
-          </div>
-          ${c.verified === true
-            ? `<span class="badge id">${star(12, 'var(--accent)')} هوية موثّقة</span>`
-            : c.verified === false
-            ? `<span class="badge photo">${star(12, 'var(--teal)')} صورة موثّقة</span>`
-            : ''}
-          ${/* `undefined` is the real member case: the directory does not
-                carry a verification result, and a badge is a claim. An app
-                that shows "صورة موثّقة" because it had nothing to show is
-                worse than one that shows nothing — the badge is the whole
-                reason someone trusts the profile. */ ''}
-        </div>
-
-        <div class="spacer"></div>
-        <div class="veil-row">${Array.from({ length: c.photos }, veil).join('')}</div>
-
-        <button class="btn ghost" style="margin-top:12px" data-request="${c.id}">
-          <span style="display:inline-flex;gap:8px;align-items:center;justify-content:center">
-            ${ico.eye} طلب رؤية الصور
-          </span>
-        </button>
-        <p class="note">
-          كل الصور على هذا التطبيق تُعرض مموّهة. لا يوجد إعداد يجعل صورتك مكشوفة للجميع — لا الآن ولا لاحقاً.
-        </p>
-
-        <div class="spacer"></div>
-        <p class="eyebrow">جاهزيته للزواج</p>
-        <div class="facts">${c.facts.map((f) => `<span class="fact">${f}</span>`).join('')}</div>
-
-        <div class="spacer"></div>
-        <p class="eyebrow">بكلماته</p>
-        <div class="panel flat"><p style="margin:0;font-size:15px;line-height:1.95">${c.bio}</p></div>
-
-        ${(c.agree.length + c.differ.length) === 0 ? '' : `
-        <div class="spacer"></div>
-        <p class="eyebrow">أين تتفقان وأين تختلفان</p>
-        <div class="panel tight">
-          ${c.agree.map((a) => `<div class="line-item">${ico.done}<span>${a}</span></div>`).join('')}
-          ${c.differ.map((d) => `
-            <div class="line-item">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--caution)"
-                   stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12h7"/></svg>
-              <span>${d}</span>
-            </div>`).join('')}
-        </div>`}
-
-        <div class="spacer"></div>
-        <div class="btn-row">
-          <button class="btn ghost" data-decide="no">لا، شكراً</button>
-          <button class="btn wide" data-decide="yes">مهتمة</button>
+      ${appbar('اليوم', { back: false })}
+      <div class="pad center" style="min-height:60vh;text-align:center">
+        <div>
+          ${star(30)}
+          <h3 class="hd" style="margin-top:18px">لم يُفتح هذا القسم بعد</h3>
+          <p class="body" style="color:var(--ink-soft)">
+            ${state.slate.status === 'none'
+              ? 'لم تُرسل طلب انضمام بعد.'
+              : `حالة طلبك: ${word('status', state.slate.status)}.`}
+            نعرض عليك أشخاصاً بعد قبول طلبك، لأن الطرف الآخر مرّ بالمراجعة نفسها.
+          </p>
+          <button class="btn quiet" style="margin-top:10px" data-go="${
+            state.slate.status === 'none' ? 'apply' : 'profile'}">
+            ${state.slate.status === 'none' ? 'ابدأ طلب الانضمام' : 'ملفي'}
+          </button>
         </div>
       </div>
     </div>`;
+  }
+
+  const cards = live
+    ? (state.slate?.cards || []).filter((c) => c.decision === 'pending')
+    : DEMO.candidates.slice(state.candidate).map((c) => ({ ...c, demo: true }));
+
+  const c = cards[0];
+
+  if (!c) {
+    const size = state.slate?.size;
+    return `
+    <div class="screen">
+      ${appbar('اليوم', { back: false })}
+      <div class="pad center" style="min-height:60vh;text-align:center">
+        <div>
+          ${star(30)}
+          <h3 class="hd" style="margin-top:18px">انتهت مرشّحات اليوم</h3>
+          <p class="body" style="color:var(--ink-soft)">
+            ${live && (state.slate?.cards || []).length === 0
+              ? 'لا أحد اليوم. نعرض فقط من يتّفق معك في ما لا تتنازل عنه.'
+              : `نعرض ${size ? arabicDigits(String(size)) : 'عدداً قليلاً من'} الأشخاص يومياً.`
+                + ' عدد قليل يُقرأ، وعدد كبير يُمرَّر.'}
+          </p>
+          ${live && state.benefits && state.benefits.membership !== 'golden' ? `
+            <button class="btn" style="margin-top:16px" data-go="membership">
+              المزيد يومياً مع العضوية
+            </button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const name = c.display_name || c.name;
+  const facts = c.demo ? c.facts : [
+    word('timeline', c.timeline),
+    word('marital_status', c.marital_status),
+    word('practice_level', c.practice_level),
+    c.willing_to_relocate ? 'مستعد للانتقال' : 'يفضّل مدينته',
+    c.family_aware ? 'عائلته على علم' : '',
+    c.height_cm ? `${c.height_cm} سم` : '',
+  ].filter(Boolean);
+
+  return `
+  <div class="screen">
+    ${appbar('اليوم', { back: false, side: `${cards.length} متبقّون` })}
+    <div class="pad">
+      <div class="deck" id="deck">
+        <article class="card" id="card" data-id="${escapeAttr(c.id)}">
+          <div class="card-photos">
+            ${Array.from({ length: Math.max(1, Math.min(c.photos ?? c.photo_count ?? 1, 4)) },
+              () => veil()).join('')}
+            ${(c.photo_count ?? c.photos) ? '' : `
+              <div class="card-nophoto">${star(26, 'var(--muted)', .5)}
+                <span class="tiny muted">لا صور بعد</span></div>`}
+          </div>
+
+          <div class="card-body">
+            <h3 class="hd" style="margin:0">${escapeAttr(name)}${c.age ? `، ${c.age}` : ''}</h3>
+            <p class="sub" style="margin:2px 0 0">
+              ${escapeAttr(c.city || '—')}${c.work || c.occupation
+                ? ` · ${escapeAttr(c.work || c.occupation)}` : ''}
+            </p>
+
+            <div class="facts" style="margin-top:12px">
+              ${facts.map((f) => `<span class="fact">${escapeAttr(f)}</span>`).join('')}
+            </div>
+
+            ${c.bio ? `
+              <p style="margin:14px 0 0;font-size:15px;line-height:1.95">${escapeAttr(c.bio)}</p>` : ''}
+
+            <button class="btn ghost" style="margin-top:14px" data-request="${escapeAttr(c.id)}">
+              <span style="display:inline-flex;gap:8px;align-items:center;justify-content:center">
+                ${ico.eye} طلب رؤية الصور
+              </span>
+            </button>
+            <p class="note" style="margin-top:6px">
+              كل الصور مموّهة. لا يوجد إعداد يجعل صورتك مكشوفة للجميع.
+            </p>
+          </div>
+        </article>
+      </div>
+
+      <div class="swipe-row">
+        <button class="swipe-btn no" data-swipe="no" data-id="${escapeAttr(c.id)}"
+                aria-label="لا، شكراً">✕</button>
+        <button class="swipe-btn yes" data-swipe="yes" data-id="${escapeAttr(c.id)}"
+                aria-label="مهتم">${star(22, '#fff')}</button>
+      </div>
+      <p class="note" style="text-align:center">
+        اهتمامك لا يُبلَّغ لأحد. إن بادله الطرف الآخر، تُفتح المحادثة لكما معاً.
+      </p>
+    </div>
+  </div>`;
 };
+
+async function loadSlate() {
+  try {
+    const [slate, benefits] = await Promise.all([
+      state.db.mySlate(), state.db.myBenefits().catch(() => null),
+    ]);
+    state.slate = slate;
+    state.benefits = benefits;
+    state.gate = slate?.gated ? (slate.status || 'none') : '';
+  } catch (error) {
+    state.slate = { cards: [] };
+    console.warn('[nasib] slate:', error.message);
+  }
+}
 
 screens.photos = () => {
   const live = !!state.db;
@@ -744,6 +834,130 @@ screens.photos = () => {
   </div>`;
 };
 
+/**
+ * The state of this conversation's contact release, at the top of it.
+ *
+ * Every stage is shown to both sides except one: before both have
+ * pressed, the person who pressed sees only their own press. Telling
+ * someone that the other is waiting on them is pressure, and it leaks
+ * interest the product keeps private until it is mutual.
+ */
+function releaseBanner() {
+  const r = state.release;
+  if (!r || !r.exists) {
+    return `
+      <div class="panel tinted accent" style="margin-bottom:14px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${ico.shield}
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:14px;line-height:1.85">
+              البيانات الشخصية محجوبة في هذه المحادثة. إذا اطمأن كلاكما، اضغطا
+              «بِنغو» معاً لطلب تبادل الأرقام.
+            </p>
+            <button class="btn" style="margin-top:10px" data-bingo>بِنغو</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (r.state === 'released') {
+    return `
+      <div class="panel accent-alt" style="margin-bottom:14px">
+        <p class="eyebrow">تبادلتما الأرقام</p>
+        <p style="margin:0 0 8px;font-size:14px;line-height:1.85">
+          من الآن أنتما على تواصل مباشر، وما يجري خارج التطبيق خارج حمايته.
+        </p>
+        <div class="code-line" dir="ltr">${escapeAttr(r.other_phone || '')}</div>
+      </div>`;
+  }
+
+  const stages = {
+    pending_other: ['طلبت تبادل الأرقام',
+      'سنكمل حين يطلب الطرف الآخر ذلك أيضاً. لا نخبره بأنك طلبت.'],
+    pending_admin: ['طلبتما تبادل الأرقام',
+      'الطلب عند الإدارة للمراجعة قبل أي دفع.'],
+    declined_by_admin: ['لم تُقبل عملية التبادل',
+      'راسل الدعم إن كنت ترى أن هذا خطأ.'],
+    expired: ['انتهت المهلة',
+      'لم يكتمل الدفع من الطرفين في الوقت المحدد.'],
+    cancelled: ['أُلغي الطلب', ''],
+  };
+
+  if (r.state === 'awaiting_payment') {
+    const by = r.pay_by ? new Date(r.pay_by).toLocaleString('ar', {
+      weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit',
+    }) : '';
+    return `
+      <div class="panel" style="margin-bottom:14px;border-inline-start:3px solid var(--accent)">
+        <p class="eyebrow">بانتظار الدفع</p>
+        <p style="margin:0 0 10px;font-size:14px;line-height:1.85">
+          ${r.i_paid
+            ? 'دفعتَ حصتك. ننتظر الطرف الآخر.'
+            : `حصتك: <b>${r.my_amount} ${escapeAttr(r.currency || '')}</b>.`}
+          ${by ? `<br>المهلة حتى ${escapeAttr(by)}.` : ''}
+        </p>
+        <p class="tiny muted" style="margin:0;line-height:1.85">
+          لا تُكشف الأرقام إلا بعد دفع الطرفين. إن لم يدفع أحدكما خلال المهلة،
+          يُعاد المبلغ المدفوع.
+        </p>
+        ${r.i_paid ? '' : `
+          <button class="btn" style="margin-top:10px" data-go="pay">كيف أدفع</button>`}
+      </div>`;
+  }
+
+  const [title, note] = stages[r.state] || ['', ''];
+  return `
+    <div class="panel tinted" style="margin-bottom:14px">
+      <p class="eyebrow">${escapeAttr(title)}</p>
+      ${note ? `<p style="margin:0;font-size:14px;line-height:1.85">${escapeAttr(note)}</p>` : ''}
+      ${r.refund_due && !r.refunded_at
+        ? '<p class="tiny" style="margin:8px 0 0;color:var(--caution)">مبلغك مستحق الإرجاع.</p>' : ''}
+      ${['pending_other', 'pending_admin'].includes(r.state)
+        ? '<button class="btn quiet" style="margin-top:8px" data-cancel-release>إلغاء الطلب</button>' : ''}
+    </div>`;
+}
+
+// How to pay. Deliberately plain: there is no card form here, because
+// there is no payment provider — a transfer, then a person confirms it.
+screens.pay = () => {
+  const r = state.release;
+  return `
+  <div class="screen">
+    ${appbar('الدفع')}
+    <div class="pad">
+      <div class="panel">
+        <p class="eyebrow">المبلغ</p>
+        <div style="font-size:30px;font-weight:700">
+          ${r?.my_amount ?? '—'} <span style="font-size:16px">${escapeAttr(r?.currency || '')}</span>
+        </div>
+        <p class="tiny muted" style="margin-top:8px;line-height:1.85">
+          يُدفع لمرة واحدة عن هذا التبادل. إن لم يدفع الطرف الآخر خلال المهلة،
+          يُعاد إليك المبلغ كاملاً.
+        </p>
+      </div>
+
+      <div class="panel tinted accent">
+        <p class="eyebrow">كيف</p>
+        <p style="margin:0;font-size:14.5px;line-height:1.9">
+          حوّل المبلغ بالطريقة المتفق عليها مع الإدارة، واكتب في خانة الملاحظات
+          اسمك كما يظهر في التطبيق. تُراجع الإدارة التحويل وتسجّله، ثم تُكشف
+          الأرقام فور دفع الطرفين.
+        </p>
+      </div>
+
+      <div class="panel tinted">
+        <p class="eyebrow">لماذا بمقابل</p>
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          تبادل الأرقام يعني خروجكما من حماية التطبيق: لا فلترة للرسائل، ولا
+          مكتب، ولا إمكانية سحب إذن. الرسم يجعل الخطوة قراراً، لا ضغطة.
+        </p>
+      </div>
+
+      <button class="btn ghost" style="margin-top:18px" data-go="chat">رجوع إلى المحادثة</button>
+    </div>
+  </div>`;
+};
+
 // The chat screen is a list of conversations until one is open, because
 // a member with two matches and no way to choose between them is a
 // screen that only ever worked with one fixture in it.
@@ -804,10 +1018,11 @@ screens.chat = () => {
     </div>
 
     <div class="pad">
-      <div class="banner info" style="margin-bottom:14px">
-        ${ico.room}
-        <span>مكالمة مرئية داخل التطبيق قبل تبادل أي وسيلة تواصل.</span>
-      </div>
+      ${live ? releaseBanner() : `
+        <div class="banner info" style="margin-bottom:14px">
+          ${ico.room}
+          <span>مكالمة مرئية داخل التطبيق قبل تبادل أي وسيلة تواصل.</span>
+        </div>`}
       <div class="thread" id="thread"></div>
     </div>
 
@@ -959,6 +1174,11 @@ const WORDS = {
     scheduled: 'محدَّد موعده', completed: 'تمّ',
     cancelled: 'ملغى', declined: 'مرفوض', no_show: 'لم يحضر',
   },
+  release: {
+    pending_other: 'بانتظار الطرف الآخر', pending_admin: 'بانتظار المراجعة',
+    declined_by_admin: 'مرفوض', awaiting_payment: 'بانتظار الدفع',
+    released: 'تمّ التبادل', expired: 'انتهت المهلة', cancelled: 'ملغى',
+  },
   status: {
     // Not an account_status: browse_members returns it for a visitor with
     // a session and no application, where no account exists to have one.
@@ -1082,6 +1302,18 @@ screens.profile = () => {
         ${p.bio ? fact('نبذة', p.bio) : ''}
       </div>
 
+      ${state.db ? `
+        <p class="eyebrow" style="margin-top:22px">المزيد</p>
+        <div class="panel tight">
+          <button class="btn quiet" data-go="membership">
+            العضوية${state.benefits ? ` — ${TIER_NAMES[state.benefits.membership] || ''}` : ''}
+          </button>
+          <button class="btn quiet" style="margin-top:6px" data-go="search">البحث</button>
+          <button class="btn quiet" style="margin-top:6px" data-go="admirers">
+            من أبدى اهتمامه بك
+          </button>
+        </div>` : ''}
+
       ${state.isAdmin ? `
         <button class="btn ghost" style="margin-top:18px" data-go="admin">
           ${ico.desk} <span style="margin-inline-start:8px">مكتب المراجعة</span>
@@ -1117,6 +1349,30 @@ screens.profile = () => {
             هذا يحفظ الطلب الذي بدأته هنا، ولا ينشئ حساباً جديداً.
           </p>`}
       </div>
+
+      ${state.email ? `
+        <p class="eyebrow" style="margin-top:22px">الدخول إلى حسابك</p>
+        <div class="panel tight">
+          ${(state.sessions || []).length === 0
+            ? '<p class="muted tiny" style="margin:0">…</p>'
+            : state.sessions.slice(0, 6).map((sn) => `
+              <div class="line-item" style="align-items:baseline">
+                <span class="tiny muted" style="min-width:96px">${
+                  new Date(sn.started_at).toLocaleDateString('ar', {
+                    day: 'numeric', month: 'short' })}</span>
+                <span style="flex:1;font-size:13.5px;line-height:1.8">
+                  ${escapeAttr(deviceName(sn.user_agent))}
+                  ${sn.is_this_one ? ' <b style="color:var(--teal)">— هذا الجهاز</b>'
+                    : sn.ended_at ? ' <span class="muted">— انتهت</span>' : ''}
+                </span>
+              </div>`).join('')}
+          <button class="btn quiet" style="margin-top:10px" data-session-secure>
+            إنهاء الجلسات الأخرى
+          </button>
+          <p class="note" style="margin-top:6px">
+            جلسة واحدة في كل مرة: الدخول من جهاز جديد يُنهي الجلسة السابقة.
+          </p>
+        </div>` : ''}
 
       <p class="eyebrow" style="margin-top:22px">معرّف حسابك</p>
       <div class="panel tight">
@@ -1222,6 +1478,9 @@ function wireLinkAccount() {
 
 async function loadProfile() {
   if (!state.db) return;
+  // The sign-in history belongs to the same screen, so it is fetched with
+  // it rather than on its own timer.
+  state.db.mySessions().then((rows) => { state.sessions = rows; }).catch(() => {});
   try {
     // `my_profile()` answers SQL null for a visitor who has not applied.
     // Normalised here so no caller has to remember that, and so a falsy
@@ -1441,6 +1700,7 @@ const DESK_TABS = [
   ['admin-requests', 'طلبات الصور', (s) => s?.requests_pending],
   ['admin-reports', 'البلاغات', (s) => s?.reports_open],
   ['admin-meetings', 'اللقاءات', (s) => s?.meetings_pending],
+  ['admin-releases', 'تبادل الأرقام', (s) => s?.releases_pending],
   ['admin-search', 'بحث', () => 0],
   ['admin-audit', 'السجلّ', () => 0],
   ['admin-stats', 'الأرقام', () => 0],
@@ -1618,6 +1878,250 @@ async function loadQueue(filter = state.queueFilter || 'waiting') {
 }
 
 // --------------------------------------------------------------------- //
+// Memberships, search, and who is interested
+// --------------------------------------------------------------------- //
+
+const TIER_NAMES = { basic: 'الأساسية', premium: 'المميّزة', golden: 'الذهبية' };
+
+screens.membership = () => {
+  const mine = state.benefits?.membership || 'basic';
+  const tiers = state.memberships || [];
+
+  return `
+  <div class="screen">
+    ${appbar('العضوية')}
+    <div class="pad">
+      ${tiers.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : tiers.map((t) => `
+          <div class="panel ${t.membership === mine ? 'accent-alt' : ''}">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <h3 class="hd" style="margin:0">${TIER_NAMES[t.membership] || t.membership}</h3>
+              ${t.membership === mine
+                ? '<span class="badge photo">عضويتك</span>' : ''}
+            </div>
+            ${t.monthly_price ? `
+              <div style="font-size:22px;font-weight:700;margin-top:6px">
+                ${t.monthly_price} <span style="font-size:14px">${escapeAttr(t.currency)} / شهر</span>
+              </div>` : ''}
+            <div class="panel tight" style="margin-top:12px;background:var(--page)">
+              <div class="line-item">${ico.done}<span>${
+                arabicDigits(String(t.daily_candidates))} مرشّحين يومياً</span></div>
+              <div class="line-item">${t.can_search ? ico.done : ico.pending}<span class="${
+                t.can_search ? '' : 'muted'}">البحث بالمدينة والعمر والتوجّه</span></div>
+              <div class="line-item">${t.can_see_interest ? ico.done : ico.pending}<span class="${
+                t.can_see_interest ? '' : 'muted'}">معرفة من أبدى اهتمامه بك</span></div>
+              <div class="line-item">${t.release_discount ? ico.done : ico.pending}<span class="${
+                t.release_discount ? '' : 'muted'}">
+                ${t.release_discount === 100 ? 'تبادل الأرقام بلا رسوم'
+                  : t.release_discount ? `خصم ${t.release_discount}% على تبادل الأرقام`
+                  : 'رسوم كاملة على تبادل الأرقام'}</span></div>
+            </div>
+          </div>`).join('')}
+
+      <div class="panel tinted accent">
+        <p class="eyebrow">كيف تشترك</p>
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          الاشتراك يُفعَّل من الإدارة بعد التحويل — لا توجد بطاقة تُدخل هنا.
+          راسل الإدارة بالعضوية التي تريدها.
+        </p>
+      </div>
+
+      <div class="panel tinted">
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          العضوية لا تشتري قبولاً ولا تُظهر ملفك قبل غيرك. تشتري عدداً أكبر من
+          المرشّحين وأدوات للبحث — والمراجعة واحدة للجميع.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+screens.admirers = () => {
+  const a = state.admirers;
+  return `
+  <div class="screen">
+    ${appbar('من أبدى اهتمامه')}
+    <div class="pad">
+      ${!a ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : !a.allowed ? `
+          <div class="panel accent-alt">
+            <h3 class="hd" style="margin:0">${arabicDigits(String(a.count || 0))} أبدوا اهتمامهم بك</h3>
+            <p style="margin:8px 0 0;font-size:14.5px;line-height:1.9">
+              معرفة من هم متاحة في العضوية المميّزة والذهبية.
+            </p>
+            <button class="btn" style="margin-top:12px" data-go="membership">العضويات</button>
+          </div>`
+        : (a.rows || []).length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا أحد بعد.</p></div>`
+        : (a.rows || []).map((r) => `
+          <div class="panel">
+            <div style="font-size:16.5px;font-weight:600">
+              ${escapeAttr(r.display_name || '—')}${r.age ? `، ${r.age}` : ''}
+            </div>
+            <div class="tiny muted" style="margin-top:2px">
+              ${escapeAttr(r.city || '—')} · ${word('timeline', r.timeline)}
+            </div>
+          </div>`).join('')}
+
+      <p class="note">
+        من يظهر هنا أبدى اهتمامه بك ولم تردّ بعد. لا يعلم أنك تراه.
+      </p>
+    </div>
+  </div>`;
+};
+
+const SEARCH_FIELDS = [
+  ['marital_status', 'الحالة', [['never_married', 'لم يسبق له الزواج'],
+    ['divorced', 'مطلّق/ة'], ['widowed', 'أرمل/ة']]],
+  ['practice_level', 'الالتزام', [['practicing', 'ملتزم/ة'],
+    ['moderately_practicing', 'إلى حدٍّ ما'], ['cultural', 'بحكم النشأة']]],
+  ['timeline', 'الإطار الزمني', [['within_6_months', 'خلال 6 شهور'],
+    ['within_1_year', 'خلال سنة'], ['within_2_years', 'خلال سنتين']]],
+];
+
+screens.search = () => {
+  const r = state.searchRows;
+  const f = state.searchFilters || {};
+
+  if (r && r.allowed === false) {
+    return `
+    <div class="screen">
+      ${appbar('بحث')}
+      <div class="pad">
+        <div class="panel accent-alt">
+          <h3 class="hd" style="margin:0">البحث للعضويات المدفوعة</h3>
+          <p style="margin:8px 0 0;font-size:14.5px;line-height:1.9">
+            في العضوية الأساسية نعرض عليك مرشّحين مختارين يومياً. البحث بالمدينة
+            والعمر والتوجّه متاح في المميّزة والذهبية.
+          </p>
+          <button class="btn" style="margin-top:12px" data-go="membership">العضويات</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="screen">
+    ${appbar('بحث')}
+    <div class="pad" id="search-form">
+      <label class="field">
+        <span>المدينة</span>
+        <input type="search" name="city" value="${escapeAttr(f.city || '')}"
+               placeholder="رام الله" autocomplete="off">
+      </label>
+
+      <div style="display:flex;gap:10px">
+        <label class="field" style="flex:1">
+          <span>العمر من</span>
+          <input type="number" name="min_age" inputmode="numeric" min="18" max="90"
+                 value="${escapeAttr(f.min_age || '')}">
+        </label>
+        <label class="field" style="flex:1">
+          <span>إلى</span>
+          <input type="number" name="max_age" inputmode="numeric" min="18" max="90"
+                 value="${escapeAttr(f.max_age || '')}">
+        </label>
+      </div>
+
+      ${SEARCH_FIELDS.map(([name, label, options]) => `
+        <p class="eyebrow">${label}</p>
+        <div class="chips scroll-row" data-search-group="${name}">
+          <button class="chip" data-search-value="" aria-pressed="${!f[name]}">الكل</button>
+          ${options.map(([value, text]) => `
+            <button class="chip" data-search-value="${value}"
+                    aria-pressed="${f[name] === value}">${text}</button>`).join('')}
+        </div>
+        <div class="spacer" style="height:10px"></div>`).join('')}
+
+      <button class="btn" id="search-run">ابحث</button>
+
+      <div style="margin-top:18px">
+        ${!r ? ''
+          : (r.rows || []).length === 0
+          ? `<div class="panel"><p class="muted" style="margin:0">لا نتائج بهذه الشروط.</p></div>`
+          : (r.rows || []).map((c) => `
+            <div class="panel">
+              <div style="font-size:16.5px;font-weight:600">
+                ${escapeAttr(c.display_name || '—')}${c.age ? `، ${c.age}` : ''}
+              </div>
+              <div class="tiny muted" style="margin-top:2px">
+                ${escapeAttr(c.city || '—')} · ${word('timeline', c.timeline)}
+                · ${word('marital_status', c.marital_status)}
+              </div>
+              ${c.bio ? `<p style="margin:10px 0 0;font-size:14.5px;line-height:1.85">${
+                escapeAttr(c.bio)}</p>` : ''}
+              <div class="btn-row" style="margin-top:12px">
+                <button class="btn ghost" data-swipe="no" data-id="${escapeAttr(c.id)}">تخطّي</button>
+                <button class="btn wide" data-swipe="yes" data-id="${escapeAttr(c.id)}">مهتم</button>
+              </div>
+            </div>`).join('')}
+      </div>
+
+      <p class="note">
+        البحث لا يتجاوز ما لا تتنازل عنه أنت أو هم: من لا يتّفق معك في شروطك
+        الأساسية لا يظهر هنا مهما بحثت.
+      </p>
+    </div>
+  </div>`;
+};
+
+function wireSearchScreen() {
+  const run = document.getElementById('search-run');
+  if (!run || !state.db) return;
+
+  run.addEventListener('click', async () => {
+    const form = document.getElementById('search-form');
+    const value = (name) => form.querySelector(`[name="${name}"]`)?.value.trim() || '';
+
+    state.searchFilters = {
+      ...state.searchFilters,
+      city: value('city') || undefined,
+      min_age: value('min_age') || undefined,
+      max_age: value('max_age') || undefined,
+    };
+
+    run.disabled = true;
+    run.textContent = 'جارٍ البحث…';
+    try {
+      // Undefined keys are dropped so the function's "filter not given"
+      // branch is taken rather than compared against an empty string.
+      const filters = Object.fromEntries(
+        Object.entries(state.searchFilters).filter(([, v]) => v !== undefined && v !== ''));
+      state.searchRows = await state.db.searchMembers(filters);
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      run.disabled = false;
+      run.textContent = 'ابحث';
+      render('search');
+    }
+  });
+}
+
+async function loadMembership() {
+  try {
+    const [benefits, tiers] = await Promise.all([
+      state.db.myBenefits(), state.db.allMemberships(),
+    ]);
+    state.benefits = benefits;
+    state.memberships = tiers;
+  } catch (error) { console.warn('[nasib] membership:', error.message); }
+}
+
+async function loadAdmirers() {
+  try { state.admirers = await state.db.myAdmirers(); }
+  catch (error) { state.admirers = { allowed: false, count: 0, rows: [] }; }
+}
+
+async function loadSearchGate() {
+  // Only to learn whether this membership may search, so the screen can
+  // show the upgrade panel instead of a form that will refuse.
+  try { state.searchRows = await state.db.searchMembers({}); }
+  catch { state.searchRows = null; }
+}
+
+// --------------------------------------------------------------------- //
 // The rest of the review desk
 // --------------------------------------------------------------------- //
 
@@ -1756,6 +2260,34 @@ screens.member = () => {
         <p class="eyebrow">بكلماته</p>
         <div class="panel flat"><p style="margin:0;font-size:15px;line-height:1.95">${
           escapeAttr(m.bio)}</p></div>` : ''}
+
+      <p class="eyebrow">العضوية</p>
+      <div class="panel">
+        <div class="tiny muted" style="margin-bottom:10px">
+          ${TIER_NAMES[m.membership] || 'أساسية'}${
+            m.membership_until
+              ? ` · حتى ${new Date(m.membership_until).toLocaleDateString('ar')}`
+              : m.membership && m.membership !== 'basic' ? '' : ' · بلا مدة'}
+        </div>
+        <div class="chips">
+          ${['basic', 'premium', 'golden'].map((level) => `
+            <button class="chip" type="button"
+                    aria-pressed="${level === (m.membership || 'basic')}"
+                    data-membership="${level}" data-id="${escapeAttr(m.user_id)}">
+              ${TIER_NAMES[level]}
+            </button>`).join('')}
+        </div>
+        <label class="field" style="margin-top:12px">
+          <span>عدد الأشهر</span>
+          <select id="membership-months">
+            ${[1, 3, 6, 12].map((n) => `
+              <option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </label>
+        <p class="tiny muted" style="margin:10px 0 0">
+          الدفع يتم خارج التطبيق. اختيار مستوى هنا يسجّل من منحه ومتى.
+        </p>
+      </div>
 
       <p class="eyebrow">سجلّ القرارات</p>
       <div class="panel tight">
@@ -1959,8 +2491,17 @@ async function loadMatches() {
 
 async function loadThread() {
   if (!state.openMatch) return;
-  try { state.thread = await state.db.matchThread(state.openMatch); }
-  catch (error) { state.thread = { messages: [] }; toast(error.message); }
+  try {
+    const [thread, release] = await Promise.all([
+      state.db.matchThread(state.openMatch),
+      state.db.myRelease(state.openMatch).catch(() => ({ exists: false })),
+    ]);
+    state.thread = thread;
+    state.release = release;
+  } catch (error) {
+    state.thread = { messages: [] };
+    toast(error.message);
+  }
 }
 
 async function loadMeetings() {
@@ -2104,6 +2645,111 @@ screens['admin-meetings'] = () => {
   </div>`;
 };
 
+// ── contact releases: approve, price, record payment, refund ──────────
+
+const RELEASE_FILTERS = [
+  ['pending', 'للمراجعة'], ['awaiting', 'بانتظار الدفع'],
+  ['refunds', 'إرجاع'], ['released', 'تمّت'],
+];
+
+screens['admin-releases'] = () => {
+  const q = state.releases;
+  const rows = q?.rows;
+  const filter = state.releaseFilter || 'pending';
+
+  return `
+  <div class="screen">
+    ${appbar('تبادل الأرقام', { side: rows ? String(rows.length) : '' })}
+    <div class="pad">
+      ${deskNav('admin-releases')}
+      <div class="chips scroll-row" style="margin-bottom:16px">
+        ${RELEASE_FILTERS.map(([id, label]) => `
+          <button class="chip" data-release-filter="${id}" aria-pressed="${filter === id}">
+            ${label}${q?.counts?.[id] ? ` (${q.counts[id]})` : ''}
+          </button>`).join('')}
+      </div>
+
+      ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
+        : rows.length === 0
+        ? `<div class="panel"><p class="muted" style="margin:0">لا شيء هنا.</p></div>`
+        : rows.map((r) => `
+          <div class="panel">
+            <div style="font-size:16.5px;font-weight:600">
+              ${escapeAttr(r.a_name || '—')} و${escapeAttr(r.b_name || '—')}
+            </div>
+            <div class="tiny muted" style="margin-top:2px">
+              ${escapeAttr(r.messages || 0)} رسالة
+              ${r.video_call_at ? ' · تمّت المكالمة المرئية'
+                : ' · <span style="color:var(--caution)">بلا مكالمة مرئية</span>'}
+              ${r.open_reports ? ` · <span style="color:var(--danger)">${
+                r.open_reports} بلاغ مفتوح</span>` : ''}
+            </div>
+
+            ${r.state === 'pending_admin' ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p class="tiny" style="margin:0;line-height:1.85">
+                  بعد الموافقة يدفع كلٌّ منهما حصته. الذهبي لا يدفع، والمميّز نصف الرسم.
+                </p>
+              </div>
+              <div class="btn-row" style="margin-top:12px">
+                <button class="btn ghost" data-release="no" data-id="${escapeAttr(r.id)}">رفض</button>
+                <button class="btn wide" data-release="yes" data-id="${escapeAttr(r.id)}">موافقة</button>
+              </div>`
+            : r.state === 'awaiting_payment' ? `
+              <div class="panel tight" style="margin-top:12px">
+                ${[['a', r.a_name, r.a_amount, r.a_paid_at, r.a_user, r.a_membership],
+                   ['b', r.b_name, r.b_amount, r.b_paid_at, r.b_user, r.b_membership]]
+                  .map(([, name, amount, paid, uid, tier]) => `
+                    <div class="line-item" style="align-items:center">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:14.5px">${escapeAttr(name || '—')}
+                          <span class="tiny muted">${TIER_NAMES[tier] || ''}</span></div>
+                        <div class="tiny muted">${amount} ${escapeAttr(r.currency)}
+                          ${paid ? ' · <span style="color:var(--teal)">دُفع</span>' : ''}</div>
+                      </div>
+                      ${paid ? '' : `
+                        <div style="display:flex;gap:6px;align-items:center">
+                          <input type="text" style="width:110px;padding:8px 10px;font-size:13px"
+                                 id="ref-${escapeAttr(r.id)}-${escapeAttr(uid)}"
+                                 placeholder="رقم الحوالة">
+                          <button class="btn quiet" style="width:auto"
+                                  data-paid="${escapeAttr(r.id)}" data-user="${escapeAttr(uid)}">
+                            تسجيل
+                          </button>
+                        </div>`}
+                    </div>`).join('')}
+              </div>
+              ${r.pay_by ? `<p class="note">المهلة حتى ${
+                new Date(r.pay_by).toLocaleString('ar', {
+                  day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' })}</p>` : ''}`
+            : r.refund_due_to && !r.refunded_at ? `
+              <div class="panel flat" style="background:var(--page);margin-top:12px;padding:12px 14px">
+                <p style="margin:0;font-size:14px;line-height:1.85">
+                  انتهت المهلة بدفعة واحدة. المبلغ مستحق الإرجاع إلى
+                  <b>${escapeAttr(r.refund_due_to === r.a_user ? r.a_name : r.b_name)}</b>.
+                </p>
+              </div>
+              <button class="btn" style="margin-top:12px" data-refunded="${escapeAttr(r.id)}">
+                سجّل الإرجاع
+              </button>`
+            : `<p class="tiny muted" style="margin-top:10px">${word('release', r.state)}</p>`}
+          </div>`).join('')}
+
+      <div class="panel tinted accent" style="margin-top:14px">
+        <p style="margin:0;font-size:14px;line-height:1.85">
+          بعد التبادل يخرج الطرفان من حماية التطبيق: لا فلترة للرسائل، ولا مكتب،
+          ولا سحب إذن. راجع المحادثة والبلاغات قبل الموافقة.
+        </p>
+      </div>
+    </div>
+  </div>`;
+};
+
+async function loadReleases() {
+  try { state.releases = await state.db.adminReleases(state.releaseFilter || 'pending'); }
+  catch (error) { state.releases = { rows: [] }; toast(error.message); }
+}
+
 // ── the audit trail ───────────────────────────────────────────────────
 
 screens['admin-audit'] = () => {
@@ -2136,6 +2782,40 @@ screens['admin-audit'] = () => {
         أو غيره، ولا أن يوقف زميلاً من داخل التطبيق.
       </p>
 
+      <p class="eyebrow" style="margin-top:22px">عناوين محظورة</p>
+      <div class="panel tight">
+        <p class="tiny muted" style="margin:0 0 10px;line-height:1.85">
+          حظر الحساب وحده لا يكفي: من حُظر يسجّل من جديد ببريد آخر خلال دقيقتين.
+          حظر العنوان يبقى بعد إغلاق الحساب.
+        </p>
+        <label class="field" style="margin-bottom:8px">
+          <span>البريد</span>
+          <input type="email" id="ban-email" dir="ltr" placeholder="someone@example.com">
+        </label>
+        <label class="field" style="margin-bottom:8px">
+          <span>السبب</span>
+          <input type="text" id="ban-reason" placeholder="طلب مالاً، ملف مزيّف…">
+        </label>
+        <button class="btn" id="ban-submit">حظر هذا البريد</button>
+        <div id="ban-error"></div>
+
+        ${(state.bannedEmails || []).length ? `
+          <hr class="rule">
+          ${state.bannedEmails.map((b) => `
+            <div class="line-item" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px" dir="ltr">${escapeAttr(b.email)}</div>
+                <div class="tiny muted">${escapeAttr(b.reason)}${
+                  b.banned_by ? ` · ${escapeAttr(b.banned_by)}` : ''}</div>
+              </div>
+              <button class="btn quiet" style="width:auto"
+                      data-unban="${escapeAttr(b.email)}">رفع الحظر</button>
+            </div>`).join('')}` : ''}
+      </div>
+      <p class="note">
+        رفع الحظر يسمح باستخدام العنوان من جديد، ولا يُعيد فتح الحساب القديم.
+      </p>
+
       <p class="eyebrow" style="margin-top:22px">آخر ما جرى</p>
       ${!rows ? `<div class="panel"><p class="muted" style="margin:0">جارٍ التحميل…</p></div>`
         : rows.length === 0
@@ -2166,6 +2846,37 @@ screens['admin-audit'] = () => {
   </div>`;
 };
 
+function wireBanForm() {
+  const button = document.getElementById('ban-submit');
+  const errorBox = document.getElementById('ban-error');
+  if (!button || !state.db) return;
+
+  button.addEventListener('click', async () => {
+    const email = document.getElementById('ban-email').value.trim();
+    const reason = document.getElementById('ban-reason').value.trim() || 'reviewed';
+
+    const fail = (message) => {
+      errorBox.innerHTML = `<div class="banner warn" style="margin:10px 0">${message}</div>`;
+      button.disabled = false;
+      button.textContent = 'حظر هذا البريد';
+    };
+    if (!email.includes('@')) return fail('أدخل بريداً صالحاً.');
+
+    errorBox.innerHTML = '';
+    button.disabled = true;
+    button.textContent = 'جارٍ الحظر…';
+    try {
+      const result = await state.db.adminBanEmail(email, reason);
+      toast(result.account_closed ? 'حُظر البريد وأُغلق الحساب.' : 'حُظر البريد.');
+      invalidate('admin-audit', 'stats');
+      state.audit = null;
+      render('admin-audit');
+    } catch (error) {
+      fail(escapeAttr(error.message));
+    }
+  });
+}
+
 async function loadSearch() { /* typed, not fetched on entry */ }
 
 async function loadAdminMeetings() {
@@ -2184,11 +2895,12 @@ async function loadAdminMeetings() {
 
 async function loadAudit() {
   try {
-    const [audit, reviewers] = await Promise.all([
-      state.db.adminAudit(), state.db.adminReviewers(),
+    const [audit, reviewers, banned] = await Promise.all([
+      state.db.adminAudit(), state.db.adminReviewers(), state.db.adminBannedEmails(),
     ]);
     state.audit = audit;
     state.reviewers = reviewers;
+    state.bannedEmails = banned;
   } catch (error) {
     state.audit = [];
     toast(error.message);
@@ -2230,6 +2942,106 @@ const TABS = [
 
 const IN_APP = new Set(TABS.map(([id]) => id));
 const history = [];
+
+// Changing the password. Reached after ending the other sessions, which
+// is the order that matters: an intruder holding a live session is not
+// removed by a new password, only by the session ending.
+screens.password = () => `
+  <div class="screen">
+    ${appbar('كلمة المرور')}
+    <div class="pad" id="password-form">
+      <div class="panel tinted accent">
+        <p style="margin:0;font-size:14.5px;line-height:1.85">
+          أُنهيت الجلسات الأخرى. اختر كلمة مرور جديدة الآن — من كان داخلاً
+          بكلمتك القديمة لن يستطيع العودة.
+        </p>
+      </div>
+
+      <label class="field" style="margin-top:18px">
+        <span>كلمة المرور الجديدة</span>
+        <input type="password" name="new-password" dir="ltr" autocomplete="new-password">
+      </label>
+
+      <div id="password-error"></div>
+      <button class="btn" id="password-submit">حفظ كلمة المرور</button>
+      <button class="btn quiet" style="margin-top:10px" data-go="profile">لاحقاً</button>
+    </div>
+  </div>`;
+
+function wirePassword() {
+  const button = document.getElementById('password-submit');
+  const errorBox = document.getElementById('password-error');
+  if (!button) return;
+
+  button.addEventListener('click', async () => {
+    const value = document.querySelector('[name="new-password"]').value;
+    const fail = (message) => {
+      errorBox.innerHTML = `<div class="banner warn" style="margin:10px 0">${message}</div>`;
+      button.disabled = false;
+      button.textContent = 'حفظ كلمة المرور';
+    };
+    if (value.length < 6) return fail('اختر كلمة مرور من ٦ أحرف أو أكثر.');
+
+    errorBox.innerHTML = '';
+    button.disabled = true;
+    button.textContent = 'جارٍ الحفظ…';
+    try {
+      await state.db.changePassword(value);
+      toast('غُيّرت كلمة المرور.');
+      go('profile');
+    } catch (error) {
+      fail(escapeAttr(error.message));
+    }
+  });
+}
+
+// A banned account. Shown instead of the app rather than letting someone
+// wander a product that will refuse everything they try — and without
+// saying which of their details is the problem, since that is the thing
+// they would change.
+screens.closed = () => `
+  <div class="screen pad" style="padding-top:64px">
+    <div class="center">${star(26, 'var(--muted)')}</div>
+    <h3 class="hd" style="text-align:center;margin-top:16px">هذا الحساب مغلق</h3>
+    <p class="body" style="text-align:center;font-size:15px;color:var(--ink-soft)">
+      لم يعد بإمكانك استخدام نصيب بهذا الحساب. إن كنت ترى أن هذا خطأ،
+      راسل الدعم.
+    </p>
+    <button class="btn ghost" style="margin-top:20px" data-signout>خروج</button>
+  </div>`;
+
+/**
+ * "Someone else signed in."
+ *
+ * Shown once, at the top of whatever screen is open, because a warning on
+ * a screen nobody visits is not a warning. The action ends every other
+ * session and sends them to change the password — in that order, so the
+ * intruder is out before the new password is set rather than after.
+ */
+function showSessionWarning(others) {
+  if (!others?.length || document.getElementById('session-warning')) return;
+
+  const when = new Date(others[0].started_at).toLocaleString('ar', {
+    day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit',
+  });
+
+  const banner = h(`
+    <div class="session-warning" id="session-warning">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        ${ico.warn}
+        <div style="flex:1;min-width:0">
+          <b style="font-size:15px">سُجّل الدخول إلى حسابك من جهاز آخر</b>
+          <div class="tiny" style="margin-top:4px;line-height:1.8">${escapeAttr(when)}
+            ${others.length > 1 ? ` · و${others.length - 1} مرة أخرى` : ''}</div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn quiet" data-session-ack>كان أنا</button>
+            <button class="btn" data-session-secure>لم أكن أنا</button>
+          </div>
+        </div>
+      </div>
+    </div>`);
+  document.body.appendChild(banner);
+}
 
 // A route with no screen. Reachable from a typo, an old link, or — the
 // way it was actually found — a URL from a newer build than the one
@@ -2278,6 +3090,7 @@ function render(name) {
   if (name === 'chat') wireChat();
   if (name === 'profile') wireProfile();
   if (name === 'login' || name === 'staff') wireLogin();
+  if (name === 'password') wirePassword();
 
   // Screens that need a round trip paint twice: once from whatever is in
   // `state` (a skeleton, or the previous read) and again when the data
@@ -2285,13 +3098,18 @@ function render(name) {
   // reads as a broken tap on a slow connection.
   if (name === 'profile') fetchOnce('profile', loadProfile);
   if (name === 'admin') fetchOnce('admin', loadQueue);
-  if (name === 'today') fetchOnce('today', loadMembers);
+  if (name === 'today') fetchOnce('today', state.db ? loadSlate : loadMembers);
   if (name === 'admin-photos') fetchOnce('admin-photos', loadPhotoQueue);
   if (name === 'admin-requests') fetchOnce('admin-requests', loadPhotoRequests);
   if (name === 'admin-reports') fetchOnce('admin-reports', loadReports);
+  if (name === 'admin-releases') fetchOnce('admin-releases', loadReleases);
   if (name === 'admin-meetings') fetchOnce('admin-meetings', loadAdminMeetings);
   if (name === 'admin-audit') fetchOnce('admin-audit', loadAudit);
   if (name === 'admin-search') wireSearch();
+  if (name === 'search') { fetchOnce('search', loadSearchGate); wireSearchScreen(); }
+  if (name === 'membership') fetchOnce('membership', loadMembership);
+  if (name === 'admirers') fetchOnce('admirers', loadAdmirers);
+  if (name === 'admin-audit') wireBanForm();
   if (name === 'member') fetchOnce('member', loadMember);
   if (name === 'photos') fetchOnce('photos', loadMyPhotos);
   if (name === 'meeting') fetchOnce('meeting', loadMeetings);
@@ -2409,6 +3227,21 @@ setInterval(() => {
   // The lightbox and the application form both hold state that only
   // exists on the page.
   if (document.querySelector('.lightbox') || current() === 'apply') return;
+
+  // Re-claiming the session on each poll is what makes "one login at a
+  // time" visible to the tab that lost: without it, a displaced session
+  // sits there looking fine until it tries to write something.
+  if (state.email) {
+    state.db.registerSession()
+      .then((session) => {
+        if (session?.current === false) {
+          toast('سُجّل الدخول من جهاز آخر. انتهت هذه الجلسة.');
+          return state.db.signOut().finally(() => go('login', { replace: true }));
+        }
+        showSessionWarning(session?.others);
+      })
+      .catch(() => {});
+  }
 
   // Expiring the current screen's keys is enough: render() re-fetches
   // whatever it finds stale, and repaints only when the answer arrives.
@@ -2797,6 +3630,12 @@ function wireChat() {
   const send = document.getElementById('send');
   const warning = document.getElementById('composer-warning');
 
+  // The chat screen is a list of conversations until one is open, and the
+  // list has no composer. Without this the wiring threw on a null and
+  // aborted the render, leaving the list stuck on "loading…" — a screen
+  // broken by the code meant to make another screen work.
+  if (!draft || !send || !warning) return;
+
   const check = () => {
     draft.style.height = 'auto';
     draft.style.height = `${Math.min(draft.scrollHeight, 110)}px`;
@@ -2862,12 +3701,46 @@ function wireChat() {
 // --------------------------------------------------------------------- //
 
 document.addEventListener('click', async (event) => {
-  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-member], [data-photo-action], [data-photo-filter], [data-schedule], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting], img[data-zoom]');
+  const el = event.target.closest('[data-go], [data-back], [data-tab], .chip, [data-decide], [data-request], [data-revoke], [data-decide-photo], [data-queue], [data-decide-user], [data-del-photo], [data-copy], [data-signout], [data-login-mode], [data-search-value], [data-member], [data-membership], [data-photo-action], [data-photo-filter], [data-schedule], [data-unban], [data-release-filter], [data-release], [data-paid], [data-refunded], [data-report], [data-screen-request], [data-open-match], [data-cancel-meeting], [data-swipe], [data-close-overlay], [data-bingo], [data-cancel-release], [data-session-ack], [data-session-secure], img[data-zoom]');
   if (!el) return;
+
+  if (el.dataset.searchValue !== undefined) {
+    const group = el.closest('[data-search-group]')?.dataset.searchGroup;
+    if (group) {
+      state.searchFilters = { ...state.searchFilters, [group]: el.dataset.searchValue || undefined };
+      for (const sib of el.parentElement.querySelectorAll('.chip')) {
+        sib.setAttribute('aria-pressed', String(sib === el));
+      }
+    }
+    return;
+  }
 
   if (el.dataset.loginMode) {
     state.loginMode = el.dataset.loginMode;
     return render('login');
+  }
+
+  if (el.hasAttribute('data-session-ack')) {
+    document.getElementById('session-warning')?.remove();
+    try { await state.db.acknowledgeSessions(); } catch { /* it reappears next time */ }
+    return;
+  }
+
+  if (el.hasAttribute('data-session-secure')) {
+    el.disabled = true;
+    try {
+      const result = await state.db.signOutOthers();
+      document.getElementById('session-warning')?.remove();
+      state.sessions = await state.db.mySessions();
+      toast(result.ended
+        ? `أُنهيت ${result.ended} جلسة أخرى. غيّر كلمة المرور الآن.`
+        : 'لا توجد جلسات أخرى.');
+      invalidate('profile');
+      return go('password');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
   }
 
   if (el.hasAttribute('data-signout')) {
@@ -2918,9 +3791,51 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  if (el.hasAttribute('data-bingo')) {
+    // Asks twice. Pressing Bingo starts something that ends with two
+    // people's numbers in each other's hands and money changing hands;
+    // it should not be a thing a thumb does by accident.
+    if (el.dataset.confirming !== 'yes') {
+      el.dataset.confirming = 'yes';
+      el.textContent = 'اضغط مرة أخرى للتأكيد';
+      return;
+    }
+    el.disabled = true;
+    try {
+      await state.db.pressBingo(state.openMatch);
+      state.release = await state.db.myRelease(state.openMatch);
+      toast('سُجّل طلبك.');
+      return render('chat');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.hasAttribute('data-cancel-release')) {
+    try {
+      await state.db.cancelRelease(state.openMatch);
+      state.release = await state.db.myRelease(state.openMatch);
+      toast('أُلغي الطلب.');
+      return render('chat');
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
+
   if (el.dataset.openMatch) {
     state.openMatch = el.dataset.openMatch;
     state.thread = null;
+    state.release = null;
+    document.querySelector('.match-overlay')?.remove();
+
+    // `go` when the hash is elsewhere, `render` when it is already here.
+    // Painting a screen without moving the hash leaves current() naming
+    // the old one, and every fetch that finishes afterwards declines to
+    // repaint because the screen it fetched for "is not showing" — which
+    // is how this screen sat on "loading…" forever when it was opened
+    // from the match overlay.
+    if (current() !== 'chat') return go('chat');
     return render('chat');
   }
 
@@ -2959,6 +3874,30 @@ document.addEventListener('click', async (event) => {
     return render('admin-photos');
   }
 
+  if (el.dataset.membership) {
+    const level = el.dataset.membership;
+    const months = Number(document.getElementById('membership-months')?.value || 1);
+    el.disabled = true;
+    try {
+      const set = await state.db.adminSetMembership(el.dataset.id, level, months);
+      // Repaint from the row's own values rather than from what was
+      // asked for: extending an existing paid tier moves the end date,
+      // and the reviewer should see the date they actually bought.
+      if (state.member && state.member.user_id === el.dataset.id) {
+        state.member.membership = set?.membership || level;
+        state.member.membership_until = set?.membership_until ?? null;
+      }
+      toast(level === 'basic'
+        ? 'أُعيد إلى العضوية الأساسية.'
+        : `${TIER_NAMES[level]} لمدة ${months} ${months === 1 ? 'شهر' : 'أشهر'}.`);
+      invalidate('member', 'stats');
+      return render('member');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
   if (el.dataset.photoAction) {
     const action = el.dataset.photoAction;
 
@@ -2987,6 +3926,71 @@ document.addEventListener('click', async (event) => {
       return render('admin-photos');
     } catch (error) {
       el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.releaseFilter) {
+    state.releaseFilter = el.dataset.releaseFilter;
+    state.releases = null;
+    invalidate('admin-releases');
+    return render('admin-releases');
+  }
+
+  if (el.dataset.release) {
+    el.disabled = true;
+    try {
+      await state.db.adminDecideRelease(el.dataset.id, el.dataset.release === 'yes');
+      toast(el.dataset.release === 'yes' ? 'وُوفق — بانتظار الدفع.' : 'رُفض الطلب.');
+      invalidate('admin-releases', 'stats');
+      state.releases = null;
+      return render('admin-releases');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.paid) {
+    // Read from a field beside the button rather than a prompt(): a
+    // modal dialog blocks the page, and a bank reference typed into a
+    // browser alert is a bank reference nobody can check afterwards.
+    const reference =
+      document.getElementById(`ref-${el.dataset.paid}-${el.dataset.user}`)?.value.trim() || '';
+    el.disabled = true;
+    try {
+      const result = await state.db.adminMarkPaid(el.dataset.paid, el.dataset.user, reference || null);
+      toast(result.state === 'released' ? 'دفع الطرفان — كُشفت الأرقام.' : 'سُجّل الدفع.');
+      invalidate('admin-releases', 'stats');
+      state.releases = null;
+      return render('admin-releases');
+    } catch (error) {
+      el.disabled = false;
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.refunded) {
+    const reference = '';
+    try {
+      await state.db.adminMarkRefunded(el.dataset.refunded, reference || null);
+      toast('سُجّل الإرجاع.');
+      invalidate('admin-releases');
+      state.releases = null;
+      return render('admin-releases');
+    } catch (error) {
+      return toast(error.message);
+    }
+  }
+
+  if (el.dataset.unban) {
+    try {
+      await state.db.adminUnbanEmail(el.dataset.unban);
+      toast('رُفع الحظر. الحساب القديم يبقى مغلقاً.');
+      invalidate('admin-audit');
+      state.audit = null;
+      return render('admin-audit');
+    } catch (error) {
       return toast(error.message);
     }
   }
@@ -3094,12 +4098,38 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  if (el.dataset.decide) {
-    // Interest is one-directional and private: a declined person is never
-    // told, and the user is never told they were declined either.
-    state.candidate += 1;
-    toast(el.dataset.decide === 'yes' ? 'سجّلنا اهتمامك.' : 'لن نعرضه عليك مجدداً.');
-    return render('today');
+  if (el.dataset.swipe || el.dataset.decide) {
+    const interested = (el.dataset.swipe || el.dataset.decide) === 'yes';
+
+    if (!state.db) {
+      state.candidate += 1;
+      toast(interested ? 'سجّلنا اهتمامك.' : 'لن نعرضه عليك مجدداً.');
+      return render('today');
+    }
+
+    const card = document.getElementById('card');
+    card?.classList.add(interested ? 'fly-yes' : 'fly-no');
+    el.disabled = true;
+
+    try {
+      const result = await state.db.swipe(el.dataset.id, interested);
+      // Mark it locally so the next card shows at once: a swipe that
+      // waits for a round trip before moving is a swipe that feels broken.
+      const hit = (state.slate?.cards || []).find((x) => x.id === el.dataset.id);
+      if (hit) hit.decision = interested ? 'interested' : 'declined';
+      invalidate('today', 'chat');
+
+      if (result?.matched) {
+        state.matches = null;
+        return showMatch(result.match_id);
+      }
+      await new Promise((r) => setTimeout(r, 160));   // let the card leave
+      return render('today');
+    } catch (error) {
+      el.disabled = false;
+      card?.classList.remove('fly-yes', 'fly-no');
+      return toast(error.message);
+    }
   }
 
   if (el.dataset.request) {
@@ -3188,6 +4218,29 @@ render(location.hash.slice(2) || 'welcome');
     // One call establishes both things the shell needs: whether this
     // browser has an application, and whether it is a reviewer.
     const me = await db.whoami();
+
+    // A banned account is shown one screen and nothing else.
+    if (me?.banned) {
+      state.banned = true;
+      return go('closed', { replace: true });
+    }
+
+    // Claim this sign-in. It ends the others — one at a time — and comes
+    // back with any sign-in the owner has not been shown yet.
+    if (me?.has_credential) {
+      db.registerSession()
+        .then((session) => {
+          if (session?.current === false) {
+            // Displaced by a newer sign-in. Say so and step aside rather
+            // than leaving a session that will be refused piecemeal.
+            toast('سُجّل الدخول من جهاز آخر. انتهت هذه الجلسة.');
+            return db.signOut().finally(() => go('login', { replace: true }));
+          }
+          showSessionWarning(session?.others);
+        })
+        .catch((error) => console.warn('[nasib] session:', error.message));
+    }
+
     state.isAdmin = !!me?.is_admin;
     // Needed by the review desk's "you are not a reviewer" screen, which
     // has to print this id whether or not an application exists.

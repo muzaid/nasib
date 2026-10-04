@@ -275,7 +275,7 @@ end;
 $$;
 
 drop trigger if exists messages_guard_body on messages;
-create trigger messages_guard_body
+create or replace trigger messages_guard_body
   before insert or update of body on messages
   for each row execute function guard_message_body();
 
