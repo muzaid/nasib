@@ -28,7 +28,7 @@ done
 total=0
 # Order matters: the matching suite creates the match the photo and meeting
 # suite then works on.
-for suite in test_matching_and_rls test_photos_and_meetings test_message_redaction test_web_signup test_review_desk test_account_security test_release; do
+for suite in test_matching_and_rls test_photos_and_meetings test_message_redaction test_web_signup test_review_desk test_account_security test_release test_moderation; do
   echo
   # Capture rather than let `set -e` kill the run: a failing assertion is a
   # result to report, not a crash to hide.
