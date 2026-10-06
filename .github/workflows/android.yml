@@ -1,0 +1,73 @@
+name: Android APK
+
+# Builds an installable APK and attaches it to the run, so a phone can be
+# tested from a push without a Flutter SDK on anyone's laptop. Download it
+# from the run's Artifacts section; on the phone, allow installs from
+# unknown sources once, then open the file.
+#
+# The `android/` directory is generated here rather than committed, so the
+# Gradle files always match the Flutter version pinned below. Bump that
+# version and the scaffolding follows.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Latest stable, because nothing here has been built against a
+          # known-good version yet. The moment one run is green, pin it:
+          #   flutter-version: '<the version this run printed>'
+          # A build that follows `stable` forever is a build that breaks on
+          # a morning when nobody changed anything.
+          channel: stable
+          cache: true
+
+      - run: flutter --version
+
+      - name: Generate the android project
+        run: |
+          cp pubspec.yaml /tmp/pubspec.bak
+          flutter create --platforms=android --org app --project-name nasib .
+          cp /tmp/pubspec.bak pubspec.yaml
+
+      - name: Apply this project's changes
+        run: python3 tool/patch_android.py
+
+      - run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        continue-on-error: true
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nasib-debug-apk
+          path: apps/mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
