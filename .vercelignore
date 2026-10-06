@@ -1,0 +1,27 @@
+# What Vercel must not upload.
+#
+# vercel.json builds from the repo root and publishes `apps/web` as the
+# site root. Anything inside apps/web is therefore served to the public
+# web — that is how a mis-dropped upload put a second copy of the whole
+# project there, and made the SQL schema, the row-level security
+# policies and the Flutter source downloadable from the live site.
+#
+# Every pattern below is anchored with a leading slash on purpose. In
+# gitignore syntax a pattern with no slash matches at any depth, so a
+# bare `app.js` would also match apps/web/app.js and un-deploy the
+# application itself.
+
+# A second copy of the project, dropped inside the published directory.
+/apps/web/apps/
+/apps/web/supabase/
+/apps/web/test/
+
+# Not part of the site: a local dev server, the developer readme, and a
+# duplicate vercel.json that the root one already supersedes.
+/apps/web/serve.py
+/apps/web/README.md
+/apps/web/vercel.json
+
+# Strays left at the repo root by the same upload.
+/app.js
+/test/
